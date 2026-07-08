@@ -2363,31 +2363,37 @@ function viewFactura(id){
     <p style="font-size:13px"><b>Cliente:</b> ${escapeHtml(cli?cli.nome:'-')}</p>
     <p style="font-size:13px"><b>Data:</b> ${fmtDate(f.data)}</p>
 
-    <h4 style="margin:14px 0 8px">📋 Folha de Custo (uso interno)</h4>
+    <h4 style="margin:14px 0 8px">📋 Folha de Custo (uso interno) — Multiplicador aplicado: x${f.multiplicador}</h4>
     <table style="width:100%;font-size:11.5px"><thead><tr><th style="text-align:left">Item</th><th>Categoria</th><th>Qtd</th><th>Custo Unit.</th><th>Subtotal</th></tr></thead><tbody>
     ${f.itens.map(i=>`<tr><td>${escapeHtml(i.nome)}</td><td>${escapeHtml(i.categoria||'-')}</td><td style="text-align:center">${i.qtd}</td><td style="text-align:center">${fmtMoney(i.precoUnit)}</td><td style="text-align:center">${fmtMoney(i.qtd*i.precoUnit)}</td></tr>`).join('')}
     </tbody></table>
     <p style="text-align:right;margin-top:6px;font-size:13px"><b>Custo Total: ${fmtMoney(f.subtotal)}</b></p>
 
     <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-    <h4 style="margin-bottom:8px">🧾 Factura Proforma (documento para o cliente) — Multiplicador x${f.multiplicador}</h4>
+    <h4 style="margin-bottom:8px">🧾 Factura Proforma (documento para o cliente)</h4>
+    <table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left">Cód. Produto</th><th style="text-align:left">Descrição do Produto</th><th>Quantidade</th></tr></thead><tbody>
+    ${f.itens.map(i=>`<tr><td>${escapeHtml(getItemCodigo(i))}</td><td>${escapeHtml(i.nome)}</td><td style="text-align:center">${i.qtd}</td></tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:10px;font-size:13px">
+      Desconto: -${fmtMoney(f.desconto)}<br>
+      ${f.retencaoAtiva? `Retenção na Fonte (${f.percentualRetencao}%): -${fmtMoney(f.valorRetencao)}<br>`:''}
+      <b style="font-size:16px;color:var(--roxo)">Valor Total: ${fmtMoney(f.total)}</b>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+    <p style="font-size:12px"><b>Dados Bancários</b><br>IBAN: ${escapeHtml(DB.config.iban)}<br>Titular: ${escapeHtml(DB.config.destinatario)}</p>
+
+    <hr style="border:none;border-top:1px dashed var(--border);margin:14px 0">
+    <h4 style="margin-bottom:8px">📷 Anexo — Fotos dos Materiais (folha separada no PDF, com quantidade)</h4>
     <div style="display:flex;flex-wrap:wrap;gap:10px;margin:10px 0">
       ${f.itens.map(i=>{
         const foto = getItemFoto(i);
         return `<div style="width:76px;text-align:center">
           ${foto? `<img src="${foto}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : `<div style="width:70px;height:70px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto">📦</div>`}
           <div style="font-size:10px;margin-top:4px">${escapeHtml(i.nome)}</div>
+          <div style="font-size:9.5px;color:var(--text-mut)">Qtd: ${i.qtd}</div>
         </div>`;
       }).join('')}
     </div>
-    <div style="text-align:right;margin-top:10px;font-size:13px">
-      Valor da Factura Proforma: ${fmtMoney(f.valorFacturaProforma)}<br>
-      Desconto: -${fmtMoney(f.desconto)}<br>
-      ${f.retencaoAtiva? `Retenção na Fonte (${f.percentualRetencao}%): -${fmtMoney(f.valorRetencao)}<br>`:''}
-      <b style="font-size:16px;color:var(--roxo)">Total a Pagar: ${fmtMoney(f.total)}</b>
-    </div>
-    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-    <p style="font-size:12px"><b>Dados Bancários</b><br>IBAN: ${escapeHtml(DB.config.iban)}<br>Titular: ${escapeHtml(DB.config.destinatario)}</p>
     <div class="field" style="margin-top:12px"><label>Status</label>
       <select onchange="updateFacturaStatus('${f.id}',this.value)">
         <option value="emitida" ${f.status==='emitida'?'selected':''}>Emitida</option>
@@ -2408,6 +2414,8 @@ async function exportFacturaPDF(id){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const logoPng = await loadLogoPng();
+
+  // ===== PÁGINA 1: FACTURA PROFORMA (só Cód., Descrição, Qtd, Desconto, Retenção, Total) =====
   if(logoPng){ try{ doc.addImage(logoPng, 'PNG', 15, 12, 20, 20); }catch(e){} }
   doc.setFontSize(16); doc.setTextColor(91,42,134);
   doc.text(DB.config.empresa.nome, 42, 20);
@@ -2421,11 +2429,40 @@ async function exportFacturaPDF(id){
   doc.text(`Cliente: ${cli?cli.nome:'-'}`, 15, 56);
   doc.text(`Data: ${fmtDate(f.data)}`, 150, 56);
 
-  doc.setFontSize(11); doc.setTextColor(91,42,134);
-  doc.text('Materiais e Consumíveis', 15, 66);
-  let gx = 15, gy = 72; const boxSize = 30; const gap = 6; const perRow = 5; let col = 0;
+  const body = f.itens.map(i=>[getItemCodigo(i), i.nome, i.qtd]);
+  doc.autoTable({
+    startY:64, head:[['Cód. Produto','Descrição do Produto','Quantidade']], body,
+    headStyles:{fillColor:[91,42,134]}, styles:{fontSize:9.5}
+  });
+  let y = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(11); doc.setTextColor(20);
+  doc.text(`Desconto: -${fmtMoney(f.desconto)}`, 15, y); y+=7;
+  if(f.retencaoAtiva){
+    doc.setTextColor(227,69,58);
+    doc.text(`Retenção na Fonte (${f.percentualRetencao}%): -${fmtMoney(f.valorRetencao)}`, 15, y); y+=7;
+    doc.setTextColor(20);
+  }
+  y+=3;
+  doc.setFontSize(14); doc.setTextColor(91,42,134);
+  doc.text(`Valor Total: ${fmtMoney(f.total)}`, 15, y); y+=16;
+  doc.setFontSize(9); doc.setTextColor(60);
+  doc.text('Dados Bancários para Pagamento:', 15, y); y+=5;
+  doc.text(`IBAN: ${DB.config.iban}`, 15, y); y+=5;
+  doc.text(`Titular: ${DB.config.destinatario}`, 15, y); y+=10;
+  doc.setTextColor(120);
+  doc.text('Assinatura: _______________________', 15, y);
+  doc.text('Yolandia Decorações — Criamos · Decoramos · Encantamos', 15, 285);
+
+  // ===== PÁGINA(S) SEGUINTE(S): ANEXO COM FOTOS E QUANTIDADES (não faz parte da Factura Proforma) =====
+  doc.addPage();
+  doc.setFontSize(13); doc.setTextColor(91,42,134);
+  doc.text('Anexo — Materiais e Consumíveis a Utilizar', 15, 18);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Factura Proforma Nº ${String(f.numero).padStart(4,'0')} · Cliente: ${cli?cli.nome:'-'}`, 15, 25);
+
+  let gx = 15, gy = 34; const boxSize = 30; const gap = 8; const perRow = 5; let col = 0;
   for(const item of f.itens){
-    if(gy > 240 && col===0){ doc.addPage(); gy = 20; }
+    if(gy > 235 && col===0){ doc.addPage(); gy = 20; }
     const x = gx + col*(boxSize+gap);
     const foto = getItemFoto(item);
     const fmt = foto? detectImgFormat(foto) : null;
@@ -2438,34 +2475,14 @@ async function exportFacturaPDF(id){
     doc.setFontSize(7); doc.setTextColor(60);
     const nomeCurto = item.nome.length>15? item.nome.slice(0,14)+'…' : item.nome;
     doc.text(nomeCurto, x+boxSize/2, gy+boxSize+4, {align:'center'});
+    doc.setFontSize(7.5); doc.setTextColor(91,42,134);
+    doc.text(`Qtd: ${item.qtd}`, x+boxSize/2, gy+boxSize+8, {align:'center'});
     col++;
-    if(col>=perRow){ col=0; gy += boxSize+12; }
+    if(col>=perRow){ col=0; gy += boxSize+16; }
   }
-  if(col!==0) gy += boxSize+12;
-  gy += 6;
-  if(gy>250){ doc.addPage(); gy=20; }
 
-  doc.setDrawColor(220); doc.line(15,gy,195,gy); gy+=8;
-  doc.setFontSize(11); doc.setTextColor(20);
-  doc.text(`Valor da Factura Proforma: ${fmtMoney(f.valorFacturaProforma)}`, 15, gy); gy+=7;
-  doc.text(`Desconto: -${fmtMoney(f.desconto)}`, 15, gy); gy+=7;
-  if(f.retencaoAtiva){
-    doc.setTextColor(227,69,58);
-    doc.text(`Retenção na Fonte (${f.percentualRetencao}%): -${fmtMoney(f.valorRetencao)}`, 15, gy); gy+=7;
-    doc.setTextColor(20);
-  }
-  gy+=2;
-  doc.setFontSize(14); doc.setTextColor(91,42,134);
-  doc.text(`Total a Pagar: ${fmtMoney(f.total)}`, 15, gy); gy+=14;
-  doc.setFontSize(9); doc.setTextColor(60);
-  doc.text('Dados Bancários para Pagamento:', 15, gy); gy+=5;
-  doc.text(`IBAN: ${DB.config.iban}`, 15, gy); gy+=5;
-  doc.text(`Titular: ${DB.config.destinatario}`, 15, gy); gy+=10;
-  doc.setTextColor(120);
-  doc.text('Assinatura: _______________________', 15, gy);
-  doc.text('Yolandia Decorações — Criamos · Decoramos · Encantamos', 15, 285);
   doc.save(`Factura_Proforma_${String(f.numero).padStart(4,'0')}.pdf`);
-  toast('Factura Proforma exportada em PDF.','ok');
+  toast('Factura Proforma exportada em PDF (2 páginas: factura + anexo de fotos).','ok');
 }
 async function exportFolhaCustoPDF(id){
   const f = DB.facturas.find(x=>x.id===id);
