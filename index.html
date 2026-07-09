@@ -526,7 +526,12 @@ function migrateDB(){
     if(f.subtotal===undefined) f.subtotal = (f.itens||[]).reduce((s,i)=>s+i.qtd*i.precoUnit,0);
     if(f.multiplicador===undefined) f.multiplicador = 2;
     if(f.valorFacturaProforma===undefined) f.valorFacturaProforma = (f.total!==undefined? f.total : f.subtotal);
+    if(f.evento_id===undefined) f.evento_id='';
+    if(!f.status) f.status='emitida';
     (f.itens||[]).forEach(i=>{ if(i.categoria===undefined) i.categoria='Material Fixo'; if(i.unidade===undefined) i.unidade='unid'; });
+  });
+  (DB.alugueres||[]).forEach(a=>{
+    if(a.fornecedor_id===undefined){ a.fornecedor_id = a.cliente_id || ''; }
   });
   (DB.listaCompras||[]).forEach(l=>{
     if(l.categoria===undefined) l.categoria='Material Fixo';
@@ -776,11 +781,11 @@ function renderDashboard(){
   <div class="grid grid-3" style="margin-top:26px">
     <div class="card">
       <h3 style="margin-bottom:10px">🚛 Próximas entregas</h3>
-      ${proxEntregas.length? proxEntregas.map(a=>listRow(clienteNome(a.cliente_id), fmtDate(a.dataEntrega))).join('') : emptyMini('Sem entregas agendadas')}
+      ${proxEntregas.length? proxEntregas.map(a=>listRow(fornecedorNome(a.fornecedor_id), fmtDate(a.dataEntrega))).join('') : emptyMini('Sem entregas agendadas')}
     </div>
     <div class="card">
       <h3 style="margin-bottom:10px">🔄 Próximas recolhas</h3>
-      ${proxRecolhas.length? proxRecolhas.map(a=>listRow(clienteNome(a.cliente_id), fmtDate(a.dataRecolha))).join('') : emptyMini('Sem recolhas agendadas')}
+      ${proxRecolhas.length? proxRecolhas.map(a=>listRow(fornecedorNome(a.fornecedor_id), fmtDate(a.dataRecolha))).join('') : emptyMini('Sem recolhas agendadas')}
     </div>
     <div class="card">
       <h3 style="margin-bottom:10px">⚠️ Estoque baixo (consumíveis)</h3>
@@ -928,8 +933,8 @@ function renderAgendaBody(){
     if(e.data===amanhaStr && e.estado!=='cancelado') alerts.push(`🔔 Evento amanhã: <b>${escapeHtml(e.nome_evento)}</b> — ${escapeHtml(e.local)}`);
   });
   DB.alugueres.forEach(a=>{
-    if(a.dataEntrega===hoje) alerts.push(`🚚 Entrega hoje para <b>${escapeHtml(clienteNome(a.cliente_id))}</b>`);
-    if(a.dataRecolha===hoje) alerts.push(`🔄 Recolha hoje de <b>${escapeHtml(clienteNome(a.cliente_id))}</b>`);
+    if(a.dataEntrega===hoje) alerts.push(`🚚 Entrega hoje — fornecedor <b>${escapeHtml(fornecedorNome(a.fornecedor_id))}</b>`);
+    if(a.dataRecolha===hoje) alerts.push(`🔄 Recolha hoje — fornecedor <b>${escapeHtml(fornecedorNome(a.fornecedor_id))}</b>`);
   });
   const alertBox = document.getElementById('agendaAlerts');
   alertBox.innerHTML = alerts.length? `<div class="card"><h3 style="margin-bottom:10px">🔔 Lembretes</h3>${alerts.map(a=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">${a}</div>`).join('')}</div>` : '';
@@ -1413,15 +1418,42 @@ function renderFornecedores(){
 function renderFornecedoresBody(){
   const q = (document.getElementById('frSearch').value||'').toLowerCase();
   const rows = DB.fornecedores.filter(f=>!q || (f.nome+f.empresa).toLowerCase().includes(q));
-  document.getElementById('frTbody').innerHTML = rows.length? rows.map(f=>`
-    <tr>
+  document.getElementById('frTbody').innerHTML = rows.length? rows.map(f=>{
+    const nMat = DB.alugaveis.filter(m=>m.fornecedor_id===f.id).length;
+    return `<tr>
       <td><b>${escapeHtml(f.nome)}</b></td>
       <td>${escapeHtml(f.empresa)||'-'}</td>
       <td>${escapeHtml(f.telefone)||'-'}</td>
       <td>${escapeHtml(f.email)||'-'}</td>
       <td>${escapeHtml(f.contacto)||'-'}</td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewFornecedor('${f.id}')">👁</button> <button class="btn btn-sm" onclick="openFornecedorForm('${f.id}')">✎</button> <button class="btn btn-sm btn-danger" onclick="delFornecedor('${f.id}')">🗑</button></td>
-    </tr>`).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="em-ic">🚚</div><div class="em-t">Nenhum fornecedor cadastrado</div></div></td></tr>`;
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-turq" onclick="viewFornecedorMateriais('${f.id}')" title="Materiais Alugáveis (${nMat})">🎪 ${nMat}</button>
+        <button class="btn btn-sm" onclick="viewFornecedor('${f.id}')">👁</button>
+        <button class="btn btn-sm" onclick="openFornecedorForm('${f.id}')">✎</button>
+        <button class="btn btn-sm btn-danger" onclick="delFornecedor('${f.id}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="em-ic">🚚</div><div class="em-t">Nenhum fornecedor cadastrado</div></div></td></tr>`;
+}
+function viewFornecedorMateriais(fornecedorId){
+  const f = DB.fornecedores.find(x=>x.id===fornecedorId);
+  if(!f) return;
+  const mats = DB.alugaveis.filter(m=>m.fornecedor_id===fornecedorId);
+  openModal('🎪 Materiais de Aluguer — '+f.nome, `
+    <p style="font-size:12.5px;color:var(--text-mut);margin-bottom:10px">Estes materiais ficam vinculados ao fornecedor <b>${escapeHtml(f.nome)}</b>. Cadastre aqui os itens que este fornecedor disponibiliza para aluguer/reserva.</p>
+    <button class="btn btn-brand btn-sm" style="margin-bottom:12px" onclick="openAlugavelForm(null,'${fornecedorId}')">+ Novo Material deste Fornecedor</button>
+    <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Código</th><th>Nome</th><th>Cor</th><th>Qtd</th><th>Preço/dia</th><th></th></tr></thead><tbody>
+    ${mats.length? mats.map(m=>`<tr>
+      <td>${m.foto? `<img class="thumb" src="${m.foto}">`:`<div class="thumb">🎪</div>`}</td>
+      <td>${m.codigo}</td><td><b>${escapeHtml(m.nome)}</b></td><td>${escapeHtml(m.cor)}</td><td>${m.quantidade}</td><td>${fmtMoney(m.precoDia)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="openAlugavelForm('${m.id}','${fornecedorId}')">✎</button>
+        <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','alugavel')" title="Histórico">🕘</button>
+        <button class="btn btn-sm btn-danger" onclick="delAlugavel('${m.id}'); viewFornecedorMateriais('${fornecedorId}')">🗑</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="em-ic">🎪</div><div class="em-t">Nenhum material vinculado a este fornecedor</div></div></td></tr>`}
+    </tbody></table></div>
+  `, `<button class="btn btn-brand" onclick="closeModal()">Fechar</button>`, true);
 }
 function openFornecedorForm(id){
   const f = id? DB.fornecedores.find(x=>x.id===id) : {id:null, nome:'', empresa:'', nif:'', telefone:'', email:'', endereco:'', contacto:'', obs:''};
@@ -1482,11 +1514,11 @@ function viewFornecedor(id){
     ${materiais.length? materiais.map(m=>`<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border)">${escapeHtml(m.nome)} — ${m.tipo} · Qtd: ${m.qtd} · ${fmtMoney(m.valor)}</div>`).join('') : '<p style="font-size:12px;color:var(--text-mut)">Sem materiais vinculados</p>'}
     <h4 style="margin:12px 0 6px">Histórico de compras/alugueres resolvidos (${comprasResolvidas.length})</h4>
     ${comprasResolvidas.length? comprasResolvidas.map(l=>`<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border)">${escapeHtml(l.materialNome)} — ${l.quantidade} ${escapeHtml(l.unidade)} · ${fmtMoney(l.quantidade*l.valorUnitario)} · ${fmtDate(l.dataNecessidade)}</div>`).join('') : '<p style="font-size:12px;color:var(--text-mut)">Sem histórico</p>'}
-  `, `<button class="btn btn-brand" onclick="closeModal()">Fechar</button>`, true);
+  `, `<button class="btn btn-turq" onclick="viewFornecedorMateriais('${f.id}')">🎪 Gerir Materiais Alugáveis</button><button class="btn btn-brand" onclick="closeModal()">Fechar</button>`, true);
 }
 
 // ============ ALUGUER + RESERVA INTELIGENTE ============
-let aluguerTab = 'catalogo';
+let aluguerTab = 'reservas';
 function renderAluguer(){
   const c = document.getElementById('content');
   c.innerHTML = `
@@ -1504,12 +1536,13 @@ function renderAluguerBody(){
   const el = document.getElementById('aluguerBody');
   if(aluguerTab==='catalogo'){
     el.innerHTML = `
-      <div class="toolbar">
-        <div class="search"><input id="alSearch" placeholder="Pesquisar material alugável..." oninput="renderAluguerBody()"></div>
-        <button class="btn btn-brand" onclick="openAlugavelForm()">+ Novo Material</button>
+      <div class="card" style="margin-bottom:16px">
+        <p style="font-size:13px">📌 Os materiais alugáveis são agora cadastrados diretamente dentro de cada <b>Fornecedor</b> (aba Fornecedores → botão 🎪). Isto mantém organizados a origem, preços e histórico por fornecedor.</p>
+        <button class="btn btn-brand btn-sm" style="margin-top:8px" onclick="navigate('fornecedores')">Ir para Fornecedores</button>
       </div>
+      <div class="toolbar"><div class="search"><input id="alSearch" placeholder="Pesquisar material alugável..." oninput="renderAluguerBody()"></div></div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Foto</th><th>Código</th><th>Nome</th><th>Modelo</th><th>Cor</th><th>Aquisição</th><th>Fornecedor</th><th>Qtd Total</th><th>Reservado</th><th>Disponível</th><th>Preço/dia</th><th></th>
+        <th>Foto</th><th>Código</th><th>Nome</th><th>Cor</th><th>Fornecedor</th><th>Qtd Total</th><th>Reservado</th><th>Disponível</th><th>Preço/dia</th>
       </tr></thead><tbody id="alTbody"></tbody></table></div>`;
     const q = (document.getElementById('alSearch').value||'').toLowerCase();
     const rows = DB.alugaveis.filter(m=>!q || (m.nome+m.modelo+m.cor).toLowerCase().includes(q));
@@ -1518,36 +1551,35 @@ function renderAluguerBody(){
       const disp = Math.max(m.quantidade - reservado, 0);
       return `<tr>
         <td>${m.foto? `<img class="thumb" src="${m.foto}">` : `<div class="thumb">🎪</div>`}</td>
-        <td>${m.codigo}</td><td><b>${escapeHtml(m.nome)}</b></td><td>${escapeHtml(m.modelo)}</td><td>${escapeHtml(m.cor)}</td>
-        <td><span class="badge ${m.tipoAquisicao==='aluguer'?'info':'purple'}">${m.tipoAquisicao==='aluguer'?'Aluguer':'Compra'}</span></td>
+        <td>${m.codigo}</td><td><b>${escapeHtml(m.nome)}</b></td><td>${escapeHtml(m.cor)}</td>
         <td style="font-size:12px">${escapeHtml(fornecedorNome(m.fornecedor_id))}</td>
         <td>${m.quantidade}</td><td>${reservado}</td>
         <td style="font-weight:700;color:${disp>0?'var(--ok)':'var(--danger)'}">${disp}</td>
         <td>${fmtMoney(m.precoDia)}</td>
-        <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openAlugavelForm('${m.id}')">✎</button> <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','alugavel')" title="Histórico">🕘</button> <button class="btn btn-sm btn-danger" onclick="delAlugavel('${m.id}')">🗑</button></td>
-      </tr>`}).join('') : `<tr><td colspan="12"><div class="empty-state"><div class="em-ic">🎪</div><div class="em-t">Nenhum material cadastrado</div></div></td></tr>`;
+      </tr>`}).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="em-ic">🎪</div><div class="em-t">Nenhum material cadastrado. Adicione a partir de um Fornecedor.</div></div></td></tr>`;
   } else {
     el.innerHTML = `
       <div class="toolbar">
-        <div class="search"><input id="rsSearch" placeholder="Pesquisar por cliente..." oninput="renderAluguerBody()"></div>
+        <div class="search"><input id="rsSearch" placeholder="Pesquisar por fornecedor..." oninput="renderAluguerBody()"></div>
+        <button class="btn btn-turq" onclick="exportAlugueresListaPDF()">⬇ Exportar Lista PDF</button>
         <button class="btn btn-brand" onclick="openAluguerForm()">+ Nova Reserva/Aluguer</button>
       </div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Cliente</th><th>Evento</th><th>Entrega</th><th>Recolha</th><th>Itens</th><th>Total</th><th>Status</th><th></th>
+        <th>Fornecedor</th><th>Data</th><th>Entrega</th><th>Recolha</th><th>Itens</th><th>Total</th><th>Status</th><th></th>
       </tr></thead><tbody id="rsTbody"></tbody></table></div>`;
     const q = (document.getElementById('rsSearch').value||'').toLowerCase();
-    const rows = DB.alugueres.filter(a=>!q || clienteNome(a.cliente_id).toLowerCase().includes(q));
+    const rows = DB.alugueres.filter(a=>!q || fornecedorNome(a.fornecedor_id).toLowerCase().includes(q));
     document.getElementById('rsTbody').innerHTML = rows.length? rows.map(a=>{
       const total = a.itens.reduce((s,i)=>s+Number(i.qtd)*Number(i.precoUnit),0);
       return `<tr>
-        <td><b>${escapeHtml(clienteNome(a.cliente_id))}</b></td>
+        <td><b>${escapeHtml(fornecedorNome(a.fornecedor_id))}</b></td>
         <td>${fmtDate(a.dataEvento)}</td>
         <td>${fmtDate(a.dataEntrega)}</td>
         <td>${fmtDate(a.dataRecolha)}</td>
         <td>${a.itens.length} item(s)</td>
         <td>${fmtMoney(total)}</td>
         <td><span class="badge ${a.status==='ativo'?'info':a.status==='concluido'?'ok':'muted'}">${a.status}</span></td>
-        <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewAluguer('${a.id}')">👁</button> <button class="btn btn-sm btn-danger" onclick="delAluguer('${a.id}')">🗑</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewAluguer('${a.id}')">👁</button> <button class="btn btn-sm btn-turq" onclick="exportAluguerPDF('${a.id}')">PDF</button> <button class="btn btn-sm btn-danger" onclick="delAluguer('${a.id}')">🗑</button></td>
       </tr>`}).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="em-ic">📋</div><div class="em-t">Nenhuma reserva registada</div></div></td></tr>`;
   }
 }
@@ -1559,8 +1591,8 @@ function qtdReservadaHoje(materialId){
   });
   return total;
 }
-function openAlugavelForm(id){
-  const m = id? DB.alugaveis.find(x=>x.id===id) : {id:null, codigo:'AL-'+String(DB.alugaveis.length+1).padStart(4,'0'), nome:'', modelo:'', cor:'', quantidade:1, precoUnidade:0, precoDia:0, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:''};
+function openAlugavelForm(id, fornecedorId){
+  const m = id? DB.alugaveis.find(x=>x.id===id) : {id:null, codigo:'AL-'+String(DB.alugaveis.length+1).padStart(4,'0'), nome:'', modelo:'', cor:'', quantidade:1, precoUnidade:0, precoDia:0, estado:'disponivel', foto:'', tipoAquisicao:'aluguer', fornecedor_id: fornecedorId||''};
   openModal(id?'Editar Material Alugável':'Novo Material Alugável', `
     <div class="field"><label>Foto</label><input type="file" accept="image/*" id="avFoto" onchange="fileToBase64(this, v=>{document.getElementById('avFotoPrev').src=v; document.getElementById('avFotoPrev').dataset.val=v; document.getElementById('avFotoPrev').style.display='block';})">
       <img id="avFotoPrev" src="${m.foto||''}" data-val="${m.foto||''}" style="width:60px;height:60px;border-radius:10px;object-fit:cover;margin-top:8px;${m.foto?'':'display:none'}">
@@ -1583,9 +1615,9 @@ function openAlugavelForm(id){
       <option value="aluguer" ${m.tipoAquisicao==='aluguer'?'selected':''}>Aluguer</option>
     </select></div>
     ${fornecedorPickerHtml('av', m.fornecedor_id)}
-  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveAlugavel('${m.id||''}')">Guardar</button>`, true);
+  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveAlugavel('${m.id||''}','${fornecedorId||''}')">Guardar</button>`, true);
 }
-function saveAlugavel(id){
+function saveAlugavel(id, returnFornecedorId){
   const nome = document.getElementById('avNome').value.trim();
   if(!nome){ toast('Indique o nome','err'); return; }
   const novaQtd = Number(document.getElementById('avQtd').value)||0;
@@ -1609,21 +1641,25 @@ function saveAlugavel(id){
     Object.assign(existing, data); existing.historico = hist;
   }
   else{ data.id = uid('al'); data.historico=[{data:todayISO(), campo:'Registo criado', antes:'-', depois:`Qtd ${novaQtd}`, usuario:usuarioAtual}]; DB.alugaveis.push(data); }
-  saveDB(); closeModal(); renderAluguerBody(); toast('Material alugável guardado.','ok');
+  saveDB(); closeModal();
+  if(returnFornecedorId){ viewFornecedorMateriais(returnFornecedorId); if(currentView==='fornecedores') renderFornecedoresBody(); }
+  else if(currentView==='aluguer'){ renderAluguerBody(); }
+  toast('Material alugável guardado.','ok');
 }
 function delAlugavel(id){
   if(!confirm('Remover este material?')) return;
-  DB.alugaveis = DB.alugaveis.filter(x=>x.id!==id); saveDB(); renderAluguerBody();
+  DB.alugaveis = DB.alugaveis.filter(x=>x.id!==id); saveDB();
+  if(currentView==='aluguer') renderAluguerBody();
 }
 
 let novoAluguerItens = [];
 function openAluguerForm(){
   novoAluguerItens = [];
-  const clientesOpts = DB.clientes.map(c=>`<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+  const fornecedoresOpts = DB.fornecedores.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}${f.empresa?' — '+escapeHtml(f.empresa):''}</option>`).join('');
   openModal('Nova Reserva / Aluguer', `
     <div class="form-row">
-      <div class="field"><label>Cliente</label><select id="rsCliente"><option value="">Selecione...</option>${clientesOpts}</select></div>
-      <div class="field"><label>Data do Evento</label><input type="date" id="rsDataEvento" value="${todayISO()}"></div>
+      <div class="field"><label>Fornecedor</label><select id="rsFornecedor" onchange="refreshAluguerMateriaisOptions()"><option value="">Selecione...</option>${fornecedoresOpts}</select></div>
+      <div class="field"><label>Data do Aluguer</label><input type="date" id="rsDataEvento" value="${todayISO()}"></div>
     </div>
     <div class="form-row">
       <div class="field"><label>Data da Entrega</label><input type="date" id="rsDataEntrega" value="${todayISO()}"></div>
@@ -1633,14 +1669,22 @@ function openAluguerForm(){
     <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
     <h4 style="margin-bottom:10px">Adicionar materiais</h4>
     <div class="form-row">
-      <div class="field"><label>Material</label><select id="rsItemMaterial">${DB.alugaveis.map(m=>`<option value="${m.id}">${escapeHtml(m.nome)} (${escapeHtml(m.cor)})</option>`).join('')}</select></div>
+      <div class="field"><label>Material</label><select id="rsItemMaterial"></select></div>
       <div class="field"><label>Quantidade</label><input type="number" id="rsItemQtd" value="1" min="1"></div>
     </div>
     <button class="btn btn-turq btn-sm" onclick="addItemAluguer()">+ Adicionar item</button>
     <div id="rsItensList" style="margin-top:12px"></div>
     <div id="rsConflitoBox"></div>
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveAluguer()">Confirmar Reserva</button>`, true);
+  refreshAluguerMateriaisOptions();
   renderItensAluguerList();
+}
+function refreshAluguerMateriaisOptions(){
+  const sel = document.getElementById('rsItemMaterial');
+  if(!sel) return;
+  const fid = document.getElementById('rsFornecedor').value;
+  const list = fid? DB.alugaveis.filter(m=>m.fornecedor_id===fid) : DB.alugaveis;
+  sel.innerHTML = list.length? list.map(m=>`<option value="${m.id}">${escapeHtml(m.nome)} (${escapeHtml(m.cor)})</option>`).join('') : '<option value="">Sem materiais disponíveis</option>';
 }
 function addItemAluguer(){
   const matId = document.getElementById('rsItemMaterial').value;
@@ -1687,8 +1731,8 @@ function qtdReservadaPeriodo(materialId, dataEntrega, dataRecolha){
   return total;
 }
 function saveAluguer(){
-  const clienteId = document.getElementById('rsCliente').value;
-  if(!clienteId){ toast('Selecione um cliente','err'); return; }
+  const fornecedorId = document.getElementById('rsFornecedor').value;
+  if(!fornecedorId){ toast('Selecione um fornecedor','err'); return; }
   if(novoAluguerItens.length===0){ toast('Adicione pelo menos um material','err'); return; }
   const dataEntrega = document.getElementById('rsDataEntrega').value;
   const dataRecolha = document.getElementById('rsDataRecolha').value;
@@ -1702,7 +1746,7 @@ function saveAluguer(){
     if(!confirm('Existem conflitos de disponibilidade para o período selecionado. Deseja continuar mesmo assim?')) return;
   }
   const aluguer = {
-    id: uid('rs'), cliente_id: clienteId, evento_id:null,
+    id: uid('rs'), fornecedor_id: fornecedorId, evento_id:null,
     dataEvento: document.getElementById('rsDataEvento').value,
     dataEntrega, dataRecolha,
     itens: novoAluguerItens, status:'ativo',
@@ -1715,8 +1759,8 @@ function viewAluguer(id){
   const a = DB.alugueres.find(x=>x.id===id);
   const total = a.itens.reduce((s,i)=>s+Number(i.qtd)*Number(i.precoUnit),0);
   openModal('Detalhes do Aluguer', `
-    <p><b>Cliente:</b> ${escapeHtml(clienteNome(a.cliente_id))}</p>
-    <p><b>Evento:</b> ${fmtDate(a.dataEvento)} · <b>Entrega:</b> ${fmtDate(a.dataEntrega)} · <b>Recolha:</b> ${fmtDate(a.dataRecolha)}</p>
+    <p><b>Fornecedor:</b> ${escapeHtml(fornecedorNome(a.fornecedor_id))}</p>
+    <p><b>Data:</b> ${fmtDate(a.dataEvento)} · <b>Entrega:</b> ${fmtDate(a.dataEntrega)} · <b>Recolha:</b> ${fmtDate(a.dataRecolha)}</p>
     <p><b>Status:</b> <select id="rsStatusSel" onchange="updateAluguerStatus('${a.id}', this.value)">
       <option value="ativo" ${a.status==='ativo'?'selected':''}>Ativo</option>
       <option value="concluido" ${a.status==='concluido'?'selected':''}>Concluído</option>
@@ -1727,7 +1771,52 @@ function viewAluguer(id){
     </tbody></table>
     <p style="margin-top:10px;text-align:right;font-weight:700">Total: ${fmtMoney(total)}</p>
     ${a.obs? `<p style="margin-top:8px"><b>Obs:</b> ${escapeHtml(a.obs)}</p>`:''}
-  `, `<button class="btn btn-brand" onclick="closeModal()">Fechar</button>`, true);
+  `, `<button class="btn" onclick="closeModal()">Fechar</button><button class="btn btn-turq" onclick="exportAluguerPDF('${a.id}')">⬇ Exportar PDF</button>`, true);
+}
+async function exportAluguerPDF(id){
+  const a = DB.alugueres.find(x=>x.id===id);
+  if(!a) return;
+  const f = DB.fornecedores.find(x=>x.id===a.fornecedor_id);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const logoPng = await loadLogoPng();
+  if(logoPng){ try{ doc.addImage(logoPng, 'PNG', 15, 10, 18, 18); }catch(e){} }
+  doc.setFontSize(15); doc.setTextColor(91,42,134);
+  doc.text('Aluguer / Reserva de Materiais', 40, 18);
+  doc.setFontSize(9); doc.setTextColor(100);
+  doc.text(DB.config.empresa.nome, 40, 24);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Fornecedor: ${f? f.nome : '-'}${f&&f.telefone?' · '+f.telefone:''}`, 15, 34);
+  doc.text(`Data do Aluguer: ${fmtDate(a.dataEvento)}   Entrega: ${fmtDate(a.dataEntrega)}   Recolha: ${fmtDate(a.dataRecolha)}`, 15, 40);
+  const body = a.itens.map(i=>[i.nome, i.cor||'-', i.qtd, fmtMoney(i.precoUnit), fmtMoney(i.qtd*i.precoUnit)]);
+  doc.autoTable({startY:46, head:[['Material','Cor','Qtd','Preço/dia','Subtotal']], body, headStyles:{fillColor:[91,42,134]}, styles:{fontSize:9}});
+  let y = doc.lastAutoTable.finalY+10;
+  const total = a.itens.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
+  doc.setFontSize(12); doc.setTextColor(91,42,134);
+  doc.text(`Total: ${fmtMoney(total)}`, 15, y); y+=10;
+  if(a.obs){ doc.setFontSize(9); doc.setTextColor(80); doc.text('Obs: '+a.obs, 15, y); y+=8; }
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text('Assinatura do fornecedor: ______________________________', 15, y+8);
+  doc.text('Yolandia Decorações — Criamos · Decoramos · Encantamos', 15, 285);
+  doc.save('Aluguer_'+(f?f.nome.replace(/\s+/g,'_'):'Fornecedor')+'_'+a.id.slice(-4)+'.pdf');
+  toast('Aluguer exportado em PDF.','ok');
+}
+async function exportAlugueresListaPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const logoPng = await loadLogoPng();
+  if(logoPng){ try{ doc.addImage(logoPng,'PNG',15,10,18,18);}catch(e){} }
+  doc.setFontSize(15); doc.setTextColor(91,42,134);
+  doc.text('Lista de Alugueres / Reservas (Fornecedores)', 40, 18);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text('Gerado em '+new Date().toLocaleDateString('pt-PT'), 15, 30);
+  const body = DB.alugueres.map(a=>{
+    const total = a.itens.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
+    return [fornecedorNome(a.fornecedor_id), fmtDate(a.dataEntrega), fmtDate(a.dataRecolha), a.itens.length, fmtMoney(total), a.status];
+  });
+  doc.autoTable({startY:36, head:[['Fornecedor','Entrega','Recolha','Itens','Total','Status']], body, headStyles:{fillColor:[91,42,134]}, styles:{fontSize:9}});
+  doc.save('Lista_Alugueres_Yolandia.pdf');
+  toast('Lista de alugueres exportada em PDF.','ok');
 }
 function updateAluguerStatus(id, status){
   const a = DB.alugueres.find(x=>x.id===id); a.status=status; saveDB(); renderAluguerBody(); toast('Status atualizado.','ok');
@@ -1902,8 +1991,10 @@ function renderChecklistBody(){
         <div>
           <div style="font-weight:800;font-size:15px">${escapeHtml(e.nome_evento)}</div>
           <div style="font-size:12.5px;color:var(--text-mut)">${escapeHtml(clienteNome(e.cliente_id))} · ${escapeHtml(e.local)} · ${fmtDate(e.data)}</div>
+          ${(function(){ const fac=DB.facturas.find(f=>f.evento_id===e.id); return fac? `<span class="badge ${fac.status==='paga'?'ok':fac.status==='rascunho'?'muted':'warn'}" style="margin-top:6px;display:inline-block">🧾 Folha de Custo #${String(fac.numero).padStart(4,'0')} · ${fac.status}</span>` : `<span class="badge muted" style="margin-top:6px;display:inline-block">Sem Folha de Custo sincronizada ainda</span>`; })()}
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-brand btn-sm" onclick="openFacturaForm('${e.id}')">🧾 Folha de Custo do Evento</button>
           <button class="btn btn-turq btn-sm" onclick="printChecklist()">🖨 Imprimir</button>
           <button class="btn btn-brand btn-sm" onclick="openAddChecklistItem()">+ Adicionar material</button>
         </div>
@@ -1990,7 +2081,40 @@ function addChecklistItem(){
     }
   }
   e.materiais.push({item_id:id, tipo, nome:m.nome, unidade:m.unidade||'', qtdNecessaria:qtd, qtdDisponivel:Math.max(disponivel,0), qtdUtilizada:0, qtdEntregue:0, qtdDevolvida:0, qtdDanificada:0, qtdPerdida:0, entregue:false, montado:false, recolhido:false, conferido:false, consumoConfirmado:false, obs:obsItem});
-  saveDB(); closeModal(); renderChecklistBody(); toast('Material adicionado ao checklist.','ok');
+  saveDB(); syncChecklistToFolhaCusto(checklistEventoId); closeModal(); renderChecklistBody(); toast('Material adicionado ao checklist.','ok');
+}
+function syncChecklistToFolhaCusto(eventoId){
+  const ev = DB.eventos.find(x=>x.id===eventoId);
+  if(!ev) return;
+  let fac = DB.facturas.find(f=>f.evento_id===eventoId);
+  if(!fac && ev.materiais.length===0) return;
+  const catMap = {fixo:'Material Fixo', alugavel:'Material Alugável', consumivel:'Consumível'};
+  const precoMap = {fixo:DB.materiaisFixos, alugavel:DB.alugaveis, consumivel:DB.consumiveis};
+  const itensSync = ev.materiais.map(m=>{
+    const src = precoMap[m.tipo]; const orig = src? src.find(x=>x.id===m.item_id) : null;
+    const preco = orig? (m.tipo==='fixo'?orig.valor:m.tipo==='alugavel'?orig.precoDia:orig.precoCompra) : 0;
+    return {item_id:m.item_id, nome:m.nome, categoria:catMap[m.tipo]||'Material Fixo', unidade:m.unidade||'unid', qtd:m.qtdNecessaria, precoUnit:preco};
+  });
+  if(fac){
+    fac.itens = itensSync;
+    fac.cliente_id = ev.cliente_id;
+    fac.subtotal = itensSync.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
+    fac.valorFacturaProforma = fac.subtotal * (fac.multiplicador||2);
+    fac.valorRetencao = fac.retencaoAtiva? fac.valorFacturaProforma*fac.percentualRetencao/100 : 0;
+    fac.total = Math.max(fac.valorFacturaProforma - (fac.desconto||0) - fac.valorRetencao, 0);
+  } else {
+    const subtotal = itensSync.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
+    const multiplicador = 2;
+    const valorFacturaProforma = subtotal*multiplicador;
+    const retencaoAtiva = DB.config.retencaoFonte.ativo;
+    const percentualRetencao = DB.config.retencaoFonte.percentual;
+    const valorRetencao = retencaoAtiva? valorFacturaProforma*percentualRetencao/100 : 0;
+    const total = Math.max(valorFacturaProforma - valorRetencao, 0);
+    fac = {id:uid('fp'), numero: DB.config.proximoNumFactura, cliente_id: ev.cliente_id, evento_id: eventoId, data: todayISO(), itens: itensSync, subtotal, multiplicador, valorFacturaProforma, desconto:0, retencaoAtiva, percentualRetencao, valorRetencao, total, obs:'Sincronizado automaticamente a partir do Check List do evento "'+ev.nome_evento+'"', status:'rascunho'};
+    DB.config.proximoNumFactura++;
+    DB.facturas.push(fac);
+  }
+  saveDB();
 }
 function confirmarConsumoConsumivel(idx){
   const e = DB.eventos.find(x=>x.id===checklistEventoId);
@@ -2046,12 +2170,12 @@ function saveEditChecklistItem(idx){
     m.qtdUtilizada = Number(document.getElementById('ckEditUtil').value)||0;
   }
   m.obs = document.getElementById('ckEditObs').value.trim();
-  saveDB(); closeModal(); renderChecklistBody(); toast('Item atualizado.','ok');
+  saveDB(); syncChecklistToFolhaCusto(checklistEventoId); closeModal(); renderChecklistBody(); toast('Item atualizado.','ok');
 }
 function removeChecklistItem(idx){
   if(!confirm('Remover este item do checklist?')) return;
   const e = DB.eventos.find(x=>x.id===checklistEventoId);
-  e.materiais.splice(idx,1); saveDB(); renderChecklistBody();
+  e.materiais.splice(idx,1); saveDB(); syncChecklistToFolhaCusto(checklistEventoId); renderChecklistBody();
 }
 function printChecklist(){
   const e = DB.eventos.find(x=>x.id===checklistEventoId);
@@ -2161,6 +2285,7 @@ function viewCliente(id){
 
 // ============ FOLHA DE CUSTO + FACTURA PROFORMA ============
 let novaFacturaItens = [];
+let editingFacturaId = null;
 function renderFacturas(){
   const c = document.getElementById('content');
   c.innerHTML = `
@@ -2179,14 +2304,14 @@ function renderFacturasBody(){
   const rows = DB.facturas.filter(f=>!q || (clienteNome(f.cliente_id)+f.numero).toLowerCase().includes(q)).sort((a,b)=>b.numero-a.numero);
   document.getElementById('fpTbody').innerHTML = rows.length? rows.map(f=>`
     <tr>
-      <td><b>#${String(f.numero).padStart(4,'0')}</b></td>
+      <td><b>#${String(f.numero).padStart(4,'0')}</b>${f.evento_id?' <span class="badge purple" style="font-size:9px">🔗 Evento</span>':''}</td>
       <td>${escapeHtml(clienteNome(f.cliente_id))}</td>
       <td>${fmtDate(f.data)}</td>
       <td>${fmtMoney(f.subtotal)}</td>
       <td><span class="badge purple">x${f.multiplicador}</span></td>
       <td>${fmtMoney(f.valorFacturaProforma)}</td>
       <td style="font-weight:700">${fmtMoney(f.total)}</td>
-      <td><span class="badge ${f.status==='paga'?'ok':f.status==='pendente'?'warn':'info'}">${f.status}</span></td>
+      <td><span class="badge ${f.status==='paga'?'ok':f.status==='rascunho'?'muted':f.status==='pendente'?'warn':'info'}">${f.status}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="viewFactura('${f.id}')">👁</button>
         <button class="btn btn-sm btn-turq" onclick="exportFacturaPDF('${f.id}')">PDF</button>
@@ -2194,16 +2319,37 @@ function renderFacturasBody(){
       </td>
     </tr>`).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="em-ic">🧾</div><div class="em-t">Nenhuma folha de custo registada</div></div></td></tr>`;
 }
-function openFacturaForm(){
+function openFacturaForm(eventoId){
+  editingFacturaId = null;
   novaFacturaItens = [];
-  const clientesOpts = DB.clientes.map(c=>`<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+  let prefillCliente = '', prefillData = todayISO(), prefillMultiplicador = 2, prefillValorFinal = 0;
+  let prefillRetencao = DB.config.retencaoFonte.ativo, prefillDesconto = 0, prefillObs = '';
+
+  if(eventoId){
+    syncChecklistToFolhaCusto(eventoId);
+    const fac = DB.facturas.find(f=>f.evento_id===eventoId);
+    if(fac){
+      editingFacturaId = fac.id;
+      novaFacturaItens = fac.itens.map(i=>({...i}));
+      prefillCliente = fac.cliente_id; prefillData = fac.data; prefillMultiplicador = fac.multiplicador;
+      prefillValorFinal = fac.valorFacturaProforma; prefillRetencao = fac.retencaoAtiva;
+      prefillDesconto = fac.desconto; prefillObs = fac.obs;
+    } else {
+      const ev = DB.eventos.find(x=>x.id===eventoId);
+      if(ev) prefillCliente = ev.cliente_id;
+    }
+  }
+
+  const clientesOpts = DB.clientes.map(c=>`<option value="${c.id}" ${prefillCliente===c.id?'selected':''}>${escapeHtml(c.nome)}</option>`).join('');
   const optFixos = DB.materiaisFixos.map(m=>`<option value="${m.id}|${m.valor}|Material Fixo|unid">${escapeHtml(m.nome)}</option>`).join('');
   const optAlug = DB.alugaveis.map(m=>`<option value="${m.id}|${m.precoDia}|Material Alugável|dia">${escapeHtml(m.nome)}</option>`).join('');
   const optCons = DB.consumiveis.map(m=>`<option value="${m.id}|${m.precoCompra}|Consumível|${escapeHtml(m.unidade)}">${escapeHtml(m.nome)}</option>`).join('');
-  openModal('Nova Folha de Custo', `
+  const multOpts = [2,3,4,5];
+  openModal(eventoId? '🧾 Folha de Custo — Sincronizada com o Evento' : 'Nova Folha de Custo', `
+    ${eventoId? `<p style="font-size:11.5px;color:var(--text-mut);margin-bottom:10px">Preenchida automaticamente com os materiais do Check List deste evento. Pode editar tudo livremente — multiplicador, valor, desconto e retenção.</p>` : ''}
     <div class="form-row">
       <div class="field"><label>Cliente</label><select id="fpCliente">${clientesOpts||'<option>Sem clientes</option>'}</select></div>
-      <div class="field"><label>Data</label><input type="date" id="fpData" value="${todayISO()}"></div>
+      <div class="field"><label>Data</label><input type="date" id="fpData" value="${prefillData}"></div>
     </div>
     <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
     <h4 style="margin-bottom:8px">📋 Itens da Folha de Custo (uso interno)</h4>
@@ -2226,31 +2372,28 @@ function openFacturaForm(){
     <div class="form-row">
       <div class="field"><label>Multiplicador de lucro</label>
         <select id="fpMultiplicador" onchange="onMultiplicadorChange()">
-          <option value="2">x2</option>
-          <option value="3">x3</option>
-          <option value="4">x4</option>
-          <option value="5">x5</option>
-          <option value="custom">Personalizado</option>
+          ${multOpts.map(v=>`<option value="${v}" ${prefillMultiplicador===v?'selected':''}>x${v}</option>`).join('')}
+          <option value="custom" ${!multOpts.includes(prefillMultiplicador)?'selected':''}>Personalizado</option>
         </select>
       </div>
-      <div class="field" id="fpMultiplicadorCustomBox" style="display:none">
-        <label>Multiplicador personalizado</label><input type="number" step="0.1" id="fpMultiplicadorCustom" value="2" oninput="recalcularValorProforma()">
+      <div class="field" id="fpMultiplicadorCustomBox" style="display:${!multOpts.includes(prefillMultiplicador)?'block':'none'}">
+        <label>Multiplicador personalizado</label><input type="number" step="0.1" id="fpMultiplicadorCustom" value="${!multOpts.includes(prefillMultiplicador)?prefillMultiplicador:2}" oninput="renderTotaisFactura()">
       </div>
     </div>
     <div class="field">
       <label>Valor da Factura Proforma (editável manualmente)</label>
-      <input type="number" id="fpValorFinal" value="0" oninput="renderTotaisFactura()">
+      <input type="number" id="fpValorFinal" value="${prefillValorFinal}" oninput="renderTotaisFactura()">
     </div>
     <button class="btn btn-ghost btn-sm" onclick="recalcularValorProforma()" style="margin-bottom:12px">↻ Recalcular (Custo × Multiplicador)</button>
     <div class="form-row">
-      <div class="field"><label><input type="checkbox" id="fpRetencaoAtiva" ${DB.config.retencaoFonte.ativo?'checked':''} onchange="renderTotaisFactura()"> Aplicar Retenção na Fonte (${DB.config.retencaoFonte.percentual}%)</label></div>
-      <div class="field"><label>Desconto (${DB.config.moeda})</label><input type="number" id="fpDesconto" value="0" oninput="renderTotaisFactura()"></div>
+      <div class="field"><label><input type="checkbox" id="fpRetencaoAtiva" ${prefillRetencao?'checked':''} onchange="renderTotaisFactura()"> Aplicar Retenção na Fonte (${DB.config.retencaoFonte.percentual}%)</label></div>
+      <div class="field"><label>Desconto (${DB.config.moeda})</label><input type="number" id="fpDesconto" value="${prefillDesconto}" oninput="renderTotaisFactura()"></div>
     </div>
     <div id="fpTotais" style="text-align:right;font-size:13.5px;margin-top:8px"></div>
-    <div class="field" style="margin-top:10px"><label>Observações</label><textarea id="fpObs" rows="2"></textarea></div>
+    <div class="field" style="margin-top:10px"><label>Observações</label><textarea id="fpObs" rows="2">${escapeHtml(prefillObs)}</textarea></div>
     <p style="font-size:11px;color:var(--text-mut);margin-top:6px">A Factura Proforma mostra ao cliente apenas o valor total, materiais/consumíveis (com fotos) — sem preços unitários. O IBAN e destinatário aparecem automaticamente. Não é aplicado IVA.</p>
-  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveFactura()">Gerar Folha de Custo</button>`, true);
-  renderItensFacturaList();
+  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveFactura()">${editingFacturaId?'Guardar Alterações':'Gerar Folha de Custo'}</button>`, true);
+  renderItensFacturaList(!!editingFacturaId);
 }
 function addItemFactura(){
   const [id, preco, categoria, unidade] = document.getElementById('fpItemSel').value.split('|');
@@ -2279,7 +2422,7 @@ function recalcularValorProforma(){
   if(input) input.value = (custo*mult).toFixed(2);
   renderTotaisFactura();
 }
-function renderItensFacturaList(){
+function renderItensFacturaList(skipRecalc){
   const box = document.getElementById('fpItensList');
   box.innerHTML = novaFacturaItens.length? `<table style="width:100%;font-size:11.5px"><thead><tr><th style="text-align:left">Item</th><th>Categoria</th><th>Qtd</th><th>Unid.</th><th>Custo Unit.</th><th>Subtotal</th><th></th></tr></thead><tbody>
     ${novaFacturaItens.map((it,idx)=>`<tr>
@@ -2294,7 +2437,7 @@ function renderItensFacturaList(){
   </tbody></table>` : `<div style="font-size:12.5px;color:var(--text-mut)">Nenhum item adicionado.</div>`;
   const custoBox = document.getElementById('fpCustoTotalBox');
   if(custoBox) custoBox.innerHTML = `Custo Total (interno): <b>${fmtMoney(custoTotalAtual())}</b>`;
-  recalcularValorProforma();
+  if(skipRecalc){ renderTotaisFactura(); } else { recalcularValorProforma(); }
 }
 function renderTotaisFactura(){
   const box = document.getElementById('fpTotais');
@@ -2319,11 +2462,27 @@ function saveFactura(){
   const percentualRetencao = DB.config.retencaoFonte.percentual;
   const valorRetencao = retencaoAtiva? valorFacturaProforma*percentualRetencao/100 : 0;
   const total = Math.max(valorFacturaProforma - desconto - valorRetencao, 0);
+  const obs = document.getElementById('fpObs').value.trim();
+  const data = document.getElementById('fpData').value;
+
+  if(editingFacturaId){
+    const existing = DB.facturas.find(x=>x.id===editingFacturaId);
+    if(existing){
+      Object.assign(existing, {cliente_id:clienteId, data, itens:novaFacturaItens, subtotal, multiplicador, valorFacturaProforma, desconto, retencaoAtiva, percentualRetencao, valorRetencao, total, obs});
+      if(existing.status==='rascunho') existing.status='emitida';
+    }
+    editingFacturaId = null;
+    saveDB(); closeModal(); renderFacturasBody();
+    if(currentView==='checklist') renderChecklistBody();
+    toast('Folha de Custo atualizada com sucesso.','ok');
+    return;
+  }
+
   const factura = {
-    id: uid('fp'), numero: DB.config.proximoNumFactura, cliente_id: clienteId, data: document.getElementById('fpData').value,
+    id: uid('fp'), numero: DB.config.proximoNumFactura, cliente_id: clienteId, evento_id:'', data,
     itens: novaFacturaItens, subtotal, multiplicador, valorFacturaProforma,
     desconto, retencaoAtiva, percentualRetencao, valorRetencao, total,
-    obs: document.getElementById('fpObs').value.trim(), status:'emitida'
+    obs, status:'emitida'
   };
   DB.config.proximoNumFactura++;
   DB.facturas.push(factura);
@@ -2396,6 +2555,7 @@ function viewFactura(id){
     </div>
     <div class="field" style="margin-top:12px"><label>Status</label>
       <select onchange="updateFacturaStatus('${f.id}',this.value)">
+        <option value="rascunho" ${f.status==='rascunho'?'selected':''}>Rascunho</option>
         <option value="emitida" ${f.status==='emitida'?'selected':''}>Emitida</option>
         <option value="paga" ${f.status==='paga'?'selected':''}>Paga</option>
         <option value="pendente" ${f.status==='pendente'?'selected':''}>Pendente</option>
