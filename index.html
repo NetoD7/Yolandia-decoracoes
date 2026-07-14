@@ -1347,6 +1347,9 @@ async function exportEstoquePDF(){
 // automaticamente a partir do cadastro em Estoque → Consumíveis. Essa linha nunca
 // é apagada e não pode ser reeditada por completo — apenas Quantidade e Valor
 // Unitário podem ser ajustados diretamente na tabela, evitando reregistos a cada evento.
+// É possível criar várias "Listas de Compra" (rondas de aquisição) para os materiais
+// Fixos/Alugáveis — mas os consumíveis fixos aparecem sempre, em TODAS as listas.
+let activeListaComprasId = null;
 function syncConsumivelToListaCompras(consumivelId){
   const m = DB.consumiveis.find(x=>x.id===consumivelId);
   if(!m) return;
@@ -1355,7 +1358,7 @@ function syncConsumivelToListaCompras(consumivelId){
     DB.listaCompras.push({
       id:uid('lc'), materialNome:m.nome, categoria:'Consumível', quantidade:0, unidade:m.unidade||'unid',
       valorUnitario:m.precoCompra||0, fornecedor_id:m.fornecedor_id||'', tipoAquisicao:m.tipoAquisicao||'compra',
-      item_id:consumivelId, tipoItem:'consumivel', evento_id:'', dataNecessidade:todayISO(), status:'pendente',
+      item_id:consumivelId, tipoItem:'consumivel', lista_id:null, evento_id:'', dataNecessidade:todayISO(), status:'pendente',
       responsavel:currentUserName(), obs:'', criadoEm:new Date().toISOString()
     });
   } else {
@@ -1368,11 +1371,50 @@ function syncAllConsumiveisToListaCompras(){
   DB.consumiveis.forEach(m=>syncConsumivelToListaCompras(m.id));
   saveDB();
 }
+function ensureListaCompras(){
+  if(!DB.listasCompras) DB.listasCompras = [];
+  if(DB.listasCompras.length===0){
+    DB.listasCompras.push({id:uid('lst'), nome:'Lista de Compra 1', criadoEm:new Date().toISOString(), responsavel:currentUserName()});
+  }
+  if(!activeListaComprasId || !DB.listasCompras.find(x=>x.id===activeListaComprasId)){
+    activeListaComprasId = DB.listasCompras[DB.listasCompras.length-1].id;
+  }
+  return DB.listasCompras;
+}
+function criarNovaListaCompras(){
+  ensureListaCompras();
+  const numero = DB.listasCompras.length + 1;
+  const nomeSugerido = 'Lista de Compra ' + numero;
+  const nome = prompt('Nome da nova lista de compra:', nomeSugerido);
+  if(nome===null) return;
+  const lst = {id:uid('lst'), nome: nome.trim()||nomeSugerido, criadoEm:new Date().toISOString(), responsavel:currentUserName()};
+  DB.listasCompras.push(lst);
+  activeListaComprasId = lst.id;
+  saveDB();
+  renderListaCompras();
+  toast('Nova lista de compra criada. Os consumíveis fixos continuam disponíveis em todas as listas.','ok');
+}
+function trocarListaComprasAtiva(id){
+  activeListaComprasId = id;
+  renderListaComprasBody();
+  const heading = document.getElementById('lcListaHeading');
+  if(heading){
+    const lst = DB.listasCompras.find(x=>x.id===id);
+    heading.textContent = lst? `${lst.nome} · criada em ${fmtDate(lst.criadoEm.slice(0,10))}` : '';
+  }
+}
 function renderListaCompras(){
+  ensureListaCompras();
   syncAllConsumiveisToListaCompras();
   const c = document.getElementById('content');
+  const listaAtual = DB.listasCompras.find(x=>x.id===activeListaComprasId);
+  const listasOpts = DB.listasCompras.map(l=>`<option value="${l.id}" ${l.id===activeListaComprasId?'selected':''}>${escapeHtml(l.nome)}</option>`).join('');
   c.innerHTML = `
     <div class="toolbar">
+      <select id="lcListaSel" onchange="trocarListaComprasAtiva(this.value)" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface-2);color:var(--text);font-weight:600">
+        ${listasOpts}
+      </select>
+      <button class="btn btn-brand" onclick="criarNovaListaCompras()">+ Nova Lista de Compra</button>
       <div class="search"><input id="lcSearch" placeholder="Pesquisar material..." oninput="renderListaComprasBody()"></div>
       <select id="lcFiltroEstado" onchange="renderListaComprasBody()" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface-2);color:var(--text)">
         <option value="">Todos os estados</option>
@@ -1383,9 +1425,10 @@ function renderListaCompras(){
         <option value="cancelado">Cancelado</option>
       </select>
       <button class="btn btn-turq" onclick="exportListaComprasPDF()">⬇ Exportar PDF</button>
-      <button class="btn btn-brand" onclick="openListaComprasForm()">+ Adicionar Item</button>
+      <button class="btn btn-ghost" onclick="openListaComprasForm()">+ Adicionar Item</button>
     </div>
-    <p style="font-size:11.5px;color:var(--text-mut);margin:-6px 0 14px">🔒 Os consumíveis aparecem como itens fixos (não podem ser apagados nem totalmente reeditados) — apenas Quantidade e Valor Unitário são ajustáveis. Para adicionar um novo consumível, use Estoque → Consumíveis.</p>
+    <p id="lcListaHeading" style="font-size:12px;color:var(--text-mut);margin:-8px 0 4px;font-weight:600">${listaAtual?`${escapeHtml(listaAtual.nome)} · criada em ${fmtDate(listaAtual.criadoEm.slice(0,10))}`:''}</p>
+    <p style="font-size:11.5px;color:var(--text-mut);margin:0 0 14px">🔒 Os consumíveis aparecem como itens fixos em TODAS as listas (não podem ser apagados nem totalmente reeditados) — apenas Quantidade e Valor Unitário são ajustáveis. Para adicionar um novo consumível, use Estoque → Consumíveis.</p>
     <div class="grid grid-4" id="lcStats"></div>
     <div class="table-wrap" style="margin-top:16px"><table><thead><tr>
       <th>Produto</th><th>Categoria</th><th>Qtd</th><th>Unid.</th><th>Valor Unit.</th><th>Subtotal</th><th>Fornecedor</th><th>Tipo</th><th>Estado</th><th></th>
@@ -1397,14 +1440,15 @@ function renderListaCompras(){
 function renderListaComprasBody(){
   const q = (document.getElementById('lcSearch').value||'').toLowerCase();
   const filtroEstado = document.getElementById('lcFiltroEstado').value;
-  const rows = DB.listaCompras.filter(l=> (!q || l.materialNome.toLowerCase().includes(q)) && (!filtroEstado || l.status===filtroEstado)).sort((a,b)=>(a.dataNecessidade||'').localeCompare(b.dataNecessidade||''));
-  const pendentes = DB.listaCompras.filter(l=>l.status==='pendente').length;
-  const resolvidos = DB.listaCompras.filter(l=>['comprado','alugado','recebido'].includes(l.status)).length;
-  const totalGeralTudo = DB.listaCompras.reduce((s,l)=>s+Number(l.quantidade||0)*Number(l.valorUnitario||0),0);
+  const itensDaListaAtual = DB.listaCompras.filter(l=> l.tipoItem==='consumivel' || l.lista_id===activeListaComprasId);
+  const rows = itensDaListaAtual.filter(l=> (!q || l.materialNome.toLowerCase().includes(q)) && (!filtroEstado || l.status===filtroEstado)).sort((a,b)=>(a.dataNecessidade||'').localeCompare(b.dataNecessidade||''));
+  const pendentes = itensDaListaAtual.filter(l=>l.status==='pendente').length;
+  const resolvidos = itensDaListaAtual.filter(l=>['comprado','alugado','recebido'].includes(l.status)).length;
+  const totalGeralTudo = itensDaListaAtual.reduce((s,l)=>s+Number(l.quantidade||0)*Number(l.valorUnitario||0),0);
   document.getElementById('lcStats').innerHTML = `
     ${statCard('🛒', COLORS.amarelo, pendentes, 'Itens pendentes')}
     ${statCard('✅', '#1FA96A', resolvidos, 'Itens resolvidos')}
-    ${statCard('📋', COLORS.roxo, DB.listaCompras.length, 'Total de registos')}
+    ${statCard('📋', COLORS.roxo, itensDaListaAtual.length, 'Total nesta lista')}
     ${statCard('💰', COLORS.turquesa, fmtMoney(totalGeralTudo), 'Valor total estimado')}
   `;
   document.getElementById('lcTbody').innerHTML = rows.length? rows.map(l=>{
@@ -1413,7 +1457,7 @@ function renderListaComprasBody(){
     const isFixo = l.tipoItem==='consumivel';
     return `<tr>
       <td><b>${escapeHtml(l.materialNome)}</b>${ev?`<br><span style="font-size:10.5px;color:var(--text-mut)">Evento: ${escapeHtml(ev.nome_evento)}</span>`:''}</td>
-      <td><span class="badge purple">${escapeHtml(l.categoria)}</span>${isFixo?` <span class="badge info" title="Item fixo gerado automaticamente a partir do consumível cadastrado em Estoque">🔒 Fixo</span>`:''}</td>
+      <td><span class="badge purple">${escapeHtml(l.categoria)}</span>${isFixo?` <span class="badge info" title="Item fixo, disponível em todas as listas">🔒 Fixo</span>`:''}</td>
       <td><input type="number" value="${l.quantidade}" style="width:60px" onchange="updateListaCompraCampo('${l.id}','quantidade',this.value)"></td>
       <td>${escapeHtml(l.unidade)}</td>
       <td><input type="number" value="${l.valorUnitario}" style="width:80px" onchange="updateListaCompraCampo('${l.id}','valorUnitario',this.value)"></td>
@@ -1426,7 +1470,7 @@ function renderListaComprasBody(){
         ${isFixo? `<span style="font-size:10.5px;color:var(--text-mut)">Edite Qtd/Valor</span>` : `<button class="btn btn-sm" onclick="openListaComprasForm('${l.id}')">✎</button> <button class="btn btn-sm btn-danger" onclick="delListaCompra('${l.id}')">🗑</button>`}
       </td>
     </tr>`;
-  }).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🛒</div><div class="em-t">Nenhum item na lista de compras</div></div></td></tr>`;
+  }).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🛒</div><div class="em-t">Nenhum item nesta lista</div></div></td></tr>`;
   const totalFiltrado = rows.reduce((s,l)=>s+Number(l.quantidade||0)*Number(l.valorUnitario||0),0);
   document.getElementById('lcTotalBox').innerHTML = `<b>Total Geral (itens listados): ${fmtMoney(totalFiltrado)}</b>`;
 }
@@ -1465,7 +1509,7 @@ function resolverListaCompraRapido(id){
   saveDB(); renderListaComprasBody(); toast('Item marcado como resolvido e estoque atualizado.','ok');
 }
 function addToListaCompras(nome, qtd, eventoId, tipoItem, itemId, categoria, unidade){
-  // Para consumíveis, nunca cria uma linha nova — atualiza a linha fixa já existente
+  // Para consumíveis, nunca cria uma linha nova — atualiza a linha fixa já existente (disponível em todas as listas)
   if(tipoItem==='consumivel' && itemId){
     syncConsumivelToListaCompras(itemId);
     const item = DB.listaCompras.find(l=>l.tipoItem==='consumivel' && l.item_id===itemId);
@@ -1477,11 +1521,12 @@ function addToListaCompras(nome, qtd, eventoId, tipoItem, itemId, categoria, uni
       return;
     }
   }
+  ensureListaCompras();
   const ev = eventoId? DB.eventos.find(e=>e.id===eventoId) : null;
   DB.listaCompras.push({
     id:uid('lc'), materialNome:nome, categoria: categoria||'Material Fixo', quantidade:qtd, unidade: unidade||'unid',
     valorUnitario:0, fornecedor_id:'', tipoAquisicao: tipoItem==='alugavel'?'aluguer':'compra',
-    item_id:itemId||null, tipoItem: tipoItem||null,
+    item_id:itemId||null, tipoItem: tipoItem||null, lista_id: activeListaComprasId,
     evento_id:eventoId||'', dataNecessidade: ev? ev.data : todayISO(), status:'pendente', responsavel: currentUserName(), obs:'', criadoEm:new Date().toISOString()
   });
   saveDB();
@@ -1491,6 +1536,7 @@ function openListaComprasForm(id){
   if(l.tipoItem==='consumivel'){ toast('Itens de consumíveis são fixos. Edite apenas a Quantidade e o Valor Unitário diretamente na tabela.','err'); return; }
   const eventosOpts = DB.eventos.map(e=>`<option value="${e.id}" ${l.evento_id===e.id?'selected':''}>${escapeHtml(e.nome_evento)}</option>`).join('');
   openModal(id?'Editar Item da Lista de Compras':'Adicionar Item à Lista de Compras/Aluguer', `
+    ${!id? `<p style="font-size:11.5px;color:var(--text-mut);margin-bottom:10px">Este item será adicionado à lista atual: <b>${escapeHtml((DB.listasCompras.find(x=>x.id===activeListaComprasId)||{}).nome||'-')}</b></p>`:''}
     <div class="form-row">
       <div class="field"><label>Produto</label><input id="lcMaterial" value="${escapeHtml(l.materialNome)}"></div>
       <div class="field"><label>Categoria</label><select id="lcCategoria">
@@ -1523,7 +1569,7 @@ function openListaComprasForm(id){
     <div class="field"><label>Evento associado (opcional)</label><select id="lcEvento"><option value="">-</option>${eventosOpts}</select></div>
     <div class="field"><label>Responsável</label><input id="lcResponsavel" value="${escapeHtml(l.responsavel||currentUserName())}"></div>
     <div class="field"><label>Observações</label><textarea id="lcObs" rows="2">${escapeHtml(l.obs||'')}</textarea></div>
-    <p style="font-size:11px;color:var(--text-mut)">Ao marcar o estado como Comprado/Alugado/Recebido, o estoque é atualizado automaticamente (quando o item tiver origem ligada ao estoque). Os consumíveis são geridos automaticamente como itens fixos a partir de Estoque → Consumíveis e não aparecem nesta categoria.</p>
+    <p style="font-size:11px;color:var(--text-mut)">Ao marcar o estado como Comprado/Alugado/Recebido, o estoque é atualizado automaticamente (quando o item tiver origem ligada ao estoque). Os consumíveis são geridos automaticamente como itens fixos a partir de Estoque → Consumíveis e aparecem em todas as listas.</p>
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveListaComprasForm('${l.id||''}')">Guardar</button>`, true);
 }
 function saveListaComprasForm(id){
@@ -1545,7 +1591,7 @@ function saveListaComprasForm(id){
     const isResolvedNow = ['comprado','alugado','recebido'].includes(existing.status);
     if(isResolvedNow && !wasResolved){ resolverListaCompraNoEstoque(existing); toast('Estoque atualizado automaticamente.','ok'); }
   } else {
-    data.id = uid('lc'); data.item_id=null; data.tipoItem=null; data.criadoEm=new Date().toISOString();
+    data.id = uid('lc'); data.item_id=null; data.tipoItem=null; data.lista_id=activeListaComprasId; data.criadoEm=new Date().toISOString();
     DB.listaCompras.push(data);
     if(['comprado','alugado','recebido'].includes(data.status)){ resolverListaCompraNoEstoque(data); toast('Estoque atualizado automaticamente.','ok'); }
   }
@@ -1560,22 +1606,24 @@ function delListaCompra(id){
 async function exportListaComprasPDF(){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const numeroLista = DB.config.proximoNumListaCompras || 1;
+  const listaAtual = DB.listasCompras.find(x=>x.id===activeListaComprasId);
+  const nomeLista = listaAtual? listaAtual.nome : 'Lista de Compras';
+  const itens = DB.listaCompras.filter(l=> l.tipoItem==='consumivel' || l.lista_id===activeListaComprasId);
   const logoPng = await loadLogoPng();
   if(logoPng){ try{ doc.addImage(logoPng, 'PNG', 15, 10, 20, 20); }catch(e){} }
   doc.setFontSize(15); doc.setTextColor(91,42,134);
-  doc.text('Lista de Compras / Aluguer', 40, 18);
+  doc.text(nomeLista, 40, 18);
   doc.setFontSize(9); doc.setTextColor(100);
   doc.text(DB.config.empresa.nome, 40, 24);
   doc.setFontSize(9); doc.setTextColor(120);
-  doc.text(`Data: ${new Date().toLocaleDateString('pt-PT')}   |   Nº da Lista: ${String(numeroLista).padStart(4,'0')}   |   Responsável: ${currentUserName()}`, 15, 36);
-  const body = DB.listaCompras.map(l=>{
+  doc.text(`Data: ${new Date().toLocaleDateString('pt-PT')}   |   Responsável: ${currentUserName()}`, 15, 36);
+  const body = itens.map(l=>{
     const subtotal = Number(l.quantidade||0)*Number(l.valorUnitario||0);
     return [l.materialNome, l.categoria, l.quantidade, l.unidade, fmtMoney(l.valorUnitario), fmtMoney(subtotal), fornecedorNome(l.fornecedor_id), l.tipoAquisicao==='aluguer'?'Aluguer':'Compra', listaCompraEstadoTexto(l.status)];
   });
   doc.autoTable({startY:42, head:[['Produto','Categoria','Qtd','Unid.','Valor Unit.','Subtotal','Fornecedor','Tipo','Estado']], body, headStyles:{fillColor:[91,42,134]}, styles:{fontSize:7.5}});
   let y = doc.lastAutoTable.finalY + 10;
-  const totalGeral = DB.listaCompras.reduce((s,l)=>s+Number(l.quantidade||0)*Number(l.valorUnitario||0),0);
+  const totalGeral = itens.reduce((s,l)=>s+Number(l.quantidade||0)*Number(l.valorUnitario||0),0);
   doc.setFontSize(12); doc.setTextColor(91,42,134);
   doc.text(`Total Geral: ${fmtMoney(totalGeral)}`, 15, y); y+=12;
   doc.setFontSize(9); doc.setTextColor(80);
@@ -1583,9 +1631,7 @@ async function exportListaComprasPDF(){
   doc.text('Assinatura do responsável: ______________________________', 15, y);
   doc.setTextColor(150);
   doc.text('Yolandia Decorações — Criamos · Decoramos · Encantamos', 15, 285);
-  DB.config.proximoNumListaCompras = numeroLista + 1;
-  saveDB();
-  doc.save('Lista_Compras_Yolandia_'+String(numeroLista).padStart(4,'0')+'.pdf');
+  doc.save('Lista_Compras_Yolandia_'+nomeLista.replace(/\s+/g,'_')+'.pdf');
   toast('Lista de compras exportada em PDF.','ok');
 }
 
@@ -2792,7 +2838,51 @@ async function exportFacturaPDF(id){
   }
   y+=3;
   doc.setFontSize(14); doc.setTextColor(91,42,134);
-  doc.text(`Valor Total: ${fmtMoney(f.total)}`, 15, y); y+=16;
+  doc.text(`Valor Total: ${fmtMoney(f.total)}`, 15, y); y+=14;
+
+  // Condições de pagamento, validade da proposta e nota importante — texto discreto, letra pequena
+  const condicoesBlocos = [
+    {titulo:'Condições de Pagamento', linhas:[
+      '• 50% do valor total deverá ser pago no momento da confirmação da reserva da data do evento.',
+      '• Os restantes 50% deverão ser liquidados até 03 (três) dias úteis antes da realização do evento.'
+    ]},
+    {titulo:'Validade da Proposta', linhas:[
+      'A presente proposta é válida por 05 (cinco) dias úteis a contar da data da sua emissão. Após este período, os valores e condições apresentados poderão sofrer alterações sem aviso prévio.'
+    ]},
+    {titulo:'Nota Importante', linhas:[
+      'A emissão desta proposta não representa bloqueio ou reserva automática da data do evento. A reserva será considerada oficial somente após:',
+      '• Aprovação formal da presente proposta;',
+      '• Confirmação do pagamento do sinal correspondente a 50% do valor total.',
+      'Os valores apresentados incluem consultoria criativa, mão de obra especializada, planeamento, preparação e todos os materiais necessários para garantir uma execução de excelência do projeto contratado.'
+    ]}
+  ];
+  condicoesBlocos.forEach(bloco=>{
+    if(y > 258){ doc.addPage(); y = 20; }
+    doc.setFontSize(7.5); doc.setTextColor(91,42,134); doc.setFont(undefined,'bold');
+    doc.text(bloco.titulo.toUpperCase(), 15, y); y+=4.5;
+    doc.setFont(undefined,'normal'); doc.setTextColor(105);
+    bloco.linhas.forEach(linha=>{
+      const wrapped = doc.splitTextToSize(linha, 178);
+      wrapped.forEach(w=>{
+        if(y > 272){ doc.addPage(); y = 20; }
+        doc.text(w, 15, y); y+=3.8;
+      });
+      y+=1;
+    });
+    y+=2;
+  });
+
+  if(y > 250){ doc.addPage(); y = 20; }
+  doc.setFontSize(7.5); doc.setTextColor(105);
+  const despedida = doc.splitTextToSize('A Yolândia Decorações agradece a confiança e a oportunidade de fazer parte deste momento especial. Permanecemos à disposição para quaisquer ajustes, esclarecimentos ou informações adicionais.', 178);
+  despedida.forEach(w=>{ if(y>272){ doc.addPage(); y=20; } doc.text(w,15,y); y+=3.8; });
+  y+=5;
+  doc.setFontSize(8); doc.setTextColor(80);
+  doc.text('Com carinho,', 15, y); y+=4.5;
+  doc.setFont(undefined,'bold'); doc.text('Yolândia Decorações', 15, y); y+=12;
+  doc.setFont(undefined,'normal');
+
+  if(y > 248){ doc.addPage(); y = 20; }
   doc.setFontSize(9); doc.setTextColor(60);
   doc.text('Dados Bancários para Pagamento:', 15, y); y+=5;
   doc.text(`IBAN: ${DB.config.iban}`, 15, y); y+=5;
