@@ -433,6 +433,8 @@ function loadLogoPng(){
 
 // ============ CONSTANTS ============
 const STORAGE_KEY = 'yolandia_decoracoes_db_v2';
+const SUPABASE_URL = 'https://rwjsvuzehknmghlerkpk.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3anN2dXplaGtubWdobGVya3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5OTgyODYsImV4cCI6MjA5OTU3NDI4Nn0.YwgAzKcYfWtfDunnd3RTnqipbZ_gqEZLfdr8DKKqm_4';
 const COLORS = {roxo:'#5B2A86', turquesa:'#17A9B0', rosa:'#EC1E79', amarelo:'#F7B500'};
 const EVENTO_STATUS = {
   'agendado': {label:'Agendado', color:'#17A9B0'},
@@ -479,6 +481,43 @@ function simpleHash(str){
   let hash = 5381;
   for(let i=0;i<str.length;i++){ hash = ((hash<<5)+hash) + str.charCodeAt(i); hash = hash & hash; }
   return 'h'+Math.abs(hash).toString(36)+str.length;
+}
+
+async function loadFromSupabase(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+      method:'GET',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json'
+      }
+    });
+    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
+    const rows = await response.json();
+    if(rows && rows.length){
+      const payload = rows[0].payload;
+      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
+    }
+  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
+  return false;
+}
+
+async function saveToSupabase(){
+  try{
+    const payload = JSON.stringify(DB);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+      method:'POST',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
+    });
+    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
+  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
 }
 
 function seedData(){
@@ -545,12 +584,14 @@ function seedData(){
   };
 }
 
-function loadDB(){
+async function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){ DB = JSON.parse(raw); }
     else{ DB = seedData(); saveDB(); }
     migrateDB();
+    const synced = await loadFromSupabase();
+    if(!synced && !raw){ saveDB(); }
   }catch(e){
     console.error('Erro ao carregar dados, a reiniciar.', e);
     DB = seedData(); saveDB();
@@ -650,6 +691,7 @@ function migrateDB(){
 function saveDB(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
   catch(e){ toast('Erro ao guardar dados localmente.', 'err'); }
+  saveToSupabase();
 }
 
 // ============ TOAST ============
