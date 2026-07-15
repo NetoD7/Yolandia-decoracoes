@@ -506,8 +506,8 @@ async function loadFromSupabase(){
 async function saveToSupabase(){
   try{
     const payload = JSON.stringify(DB);
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
-      method:'POST',
+   const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+      method:'PATCH',
       headers:{
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
