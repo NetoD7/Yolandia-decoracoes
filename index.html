@@ -506,7 +506,7 @@ async function loadFromSupabase(){
 async function saveToSupabase(){
   try{
     const payload = JSON.stringify(DB);
-   const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
       method:'PATCH',
       headers:{
         'apikey': SUPABASE_ANON_KEY,
@@ -522,6 +522,7 @@ async function saveToSupabase(){
 
 function seedData(){
   return {
+
     config:{
       empresa:{nome:'Yolandia Decorações', telefone:'+244 9XX XXX XXX', email:'geral@yolandiadecoracoes.ao', nif:'5000000000', endereco:'Talatona, Luanda, Angola'},
       retencaoFonte:{ativo:true, percentual:6.5},
@@ -584,14 +585,12 @@ function seedData(){
   };
 }
 
-async function loadDB(){
+function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){ DB = JSON.parse(raw); }
     else{ DB = seedData(); saveDB(); }
     migrateDB();
-    const synced = await loadFromSupabase();
-    if(!synced && !raw){ saveDB(); }
   }catch(e){
     console.error('Erro ao carregar dados, a reiniciar.', e);
     DB = seedData(); saveDB();
@@ -669,7 +668,7 @@ function migrateDB(){
     if(l.lista_id===undefined) l.lista_id=null;
     if(!['pendente','comprado','alugado','recebido','cancelado'].includes(l.status)) l.status='pendente';
   });
-  const itensOrfaosListaCompras = DB.listaCompras.filter(l=>l.tipoItem!=='consumivel' && !l.lista_id);
+  const itensOrfaosListaCompras = DB.listaCompras.filter(l=>!l.lista_id);
   if(itensOrfaosListaCompras.length){
     if(!DB.listasCompras.length) DB.listasCompras.push({id:uid('lst'), nome:'Lista de Compra 1', criadoEm:new Date().toISOString(), responsavel:''});
     const listaMigracaoId = DB.listasCompras[0].id;
@@ -684,8 +683,6 @@ function migrateDB(){
       if(m.unidade===undefined) m.unidade='';
     });
   });
-  // Garante que todos os consumíveis já cadastrados têm a sua linha fixa na Lista de Compras
-  (DB.consumiveis||[]).forEach(m=>syncConsumivelToListaCompras(m.id));
   saveDB();
 }
 function saveDB(){
@@ -1312,7 +1309,6 @@ function saveConsumivel(id){
     fornecedor_id: resolveFornecedorFromForm('cs'),
     foto: document.getElementById('csFotoPrev').dataset.val||''
   };
-  let finalId = id;
   if(id){
     const existing = DB.consumiveis.find(x=>x.id===id);
     const hist = existing.historico || [];
@@ -1320,29 +1316,19 @@ function saveConsumivel(id){
     if(existing.quantidade !== novaQtd) hist.push({data:todayISO(), campo:'Quantidade', antes:existing.quantidade, depois:novaQtd, usuario:usuarioAtual});
     Object.assign(existing, data); existing.historico = hist;
   }
-  else{ data.id = uid('cs'); data.historico=[{data:todayISO(), campo:'Registo criado', antes:'-', depois:`Qtd ${novaQtd}`, usuario:usuarioAtual}]; DB.consumiveis.push(data); finalId = data.id; }
-  // Cria ou mantém a linha fixa deste consumível na Lista de Compras (nome/fornecedor sincronizados; qtd/valor ficam a cargo do utilizador na própria lista)
-  syncConsumivelToListaCompras(finalId);
-  saveDB(); closeModal(); renderEstoqueBody(); toast('Consumível guardado. Item fixo da Lista de Compras sincronizado.','ok');
+  else{ data.id = uid('cs'); data.historico=[{data:todayISO(), campo:'Registo criado', antes:'-', depois:`Qtd ${novaQtd}`, usuario:usuarioAtual}]; DB.consumiveis.push(data); }
+  saveDB(); closeModal(); renderEstoqueBody(); toast('Consumível guardado.','ok');
 }
 function delConsumivel(id){
-  if(!confirm('Remover este consumível? A sua linha fixa na Lista de Compras também será removida.')) return;
-  DB.consumiveis = DB.consumiveis.filter(x=>x.id!==id);
-  DB.listaCompras = DB.listaCompras.filter(l=>!(l.tipoItem==='consumivel' && l.item_id===id));
-  saveDB(); renderEstoqueBody();
+  if(!confirm('Remover este consumível?')) return;
+  DB.consumiveis = DB.consumiveis.filter(x=>x.id!==id); saveDB(); renderEstoqueBody();
 }
 function addToListaComprasFromEstoque(id){
   const m = DB.consumiveis.find(x=>x.id===id);
   if(!m) return;
-  syncConsumivelToListaCompras(id);
-  const item = DB.listaCompras.find(l=>l.tipoItem==='consumivel' && l.item_id===id);
   const faltam = Math.max(Number(m.estoqueMinimo||0)*2 - Number(m.quantidade||0), 1);
-  item.quantidade = faltam;
-  if(!item.valorUnitario) item.valorUnitario = m.precoCompra||0;
-  item.status = 'pendente';
-  item.dataNecessidade = todayISO();
-  saveDB();
-  toast('Item fixo da Lista de Compras atualizado com a quantidade necessária.','ok');
+  addToListaCompras(m.nome, faltam, '', 'consumivel', m.id, 'Consumível', m.unidade||'unid');
+  toast('Item adicionado à Lista de Compras.','ok');
   renderEstoqueBody();
 }
 function viewHistoricoMaterial(id, tipo){
@@ -1385,34 +1371,10 @@ async function exportEstoquePDF(){
 }
 
 // ============ LISTA DE COMPRAS / ALUGUER (módulo completo de aquisições) ============
-// Os CONSUMÍVEIS têm sempre uma única linha FIXA nesta lista, criada/atualizada
-// automaticamente a partir do cadastro em Estoque → Consumíveis. Essa linha nunca
-// é apagada e não pode ser reeditada por completo — apenas Quantidade e Valor
-// Unitário podem ser ajustados diretamente na tabela, evitando reregistos a cada evento.
-// É possível criar várias "Listas de Compra" (rondas de aquisição) para os materiais
-// Fixos/Alugáveis — mas os consumíveis fixos aparecem sempre, em TODAS as listas.
+// É possível criar várias "Listas de Compra" (rondas de aquisição). Cada lista contém
+// apenas os materiais e consumíveis adicionados manualmente durante o processo de
+// planeamento — não existem itens fixos ou pré-gerados automaticamente.
 let activeListaComprasId = null;
-function syncConsumivelToListaCompras(consumivelId){
-  const m = DB.consumiveis.find(x=>x.id===consumivelId);
-  if(!m) return;
-  let item = DB.listaCompras.find(l=>l.tipoItem==='consumivel' && l.item_id===consumivelId);
-  if(!item){
-    DB.listaCompras.push({
-      id:uid('lc'), materialNome:m.nome, categoria:'Consumível', quantidade:0, unidade:m.unidade||'unid',
-      valorUnitario:m.precoCompra||0, fornecedor_id:m.fornecedor_id||'', tipoAquisicao:m.tipoAquisicao||'compra',
-      item_id:consumivelId, tipoItem:'consumivel', lista_id:null, evento_id:'', dataNecessidade:todayISO(), status:'pendente',
-      responsavel:currentUserName(), obs:'', criadoEm:new Date().toISOString()
-    });
-  } else {
-    // Mantém a quantidade e o valor definidos pelo utilizador; apenas o nome é sincronizado
-    item.materialNome = m.nome;
-    if(item.unidade===undefined || item.unidade==='') item.unidade = m.unidade||'unid';
-  }
-}
-function syncAllConsumiveisToListaCompras(){
-  DB.consumiveis.forEach(m=>syncConsumivelToListaCompras(m.id));
-  saveDB();
-}
 function ensureListaCompras(){
   if(!DB.listasCompras) DB.listasCompras = [];
   if(DB.listasCompras.length===0){
@@ -1434,7 +1396,7 @@ function criarNovaListaCompras(){
   activeListaComprasId = lst.id;
   saveDB();
   renderListaCompras();
-  toast('Nova lista de compra criada. Os consumíveis fixos continuam disponíveis em todas as listas.','ok');
+  toast('Nova lista de compra criada.','ok');
 }
 function trocarListaComprasAtiva(id){
   activeListaComprasId = id;
@@ -1447,7 +1409,6 @@ function trocarListaComprasAtiva(id){
 }
 function renderListaCompras(){
   ensureListaCompras();
-  syncAllConsumiveisToListaCompras();
   const c = document.getElementById('content');
   const listaAtual = DB.listasCompras.find(x=>x.id===activeListaComprasId);
   const listasOpts = DB.listasCompras.map(l=>`<option value="${l.id}" ${l.id===activeListaComprasId?'selected':''}>${escapeHtml(l.nome)}</option>`).join('');
@@ -1469,8 +1430,7 @@ function renderListaCompras(){
       <button class="btn btn-turq" onclick="exportListaComprasPDF()">⬇ Exportar PDF</button>
       <button class="btn btn-ghost" onclick="openListaComprasForm()">+ Adicionar Item</button>
     </div>
-    <p id="lcListaHeading" style="font-size:12px;color:var(--text-mut);margin:-8px 0 4px;font-weight:600">${listaAtual?`${escapeHtml(listaAtual.nome)} · criada em ${fmtDate(listaAtual.criadoEm.slice(0,10))}`:''}</p>
-    <p style="font-size:11.5px;color:var(--text-mut);margin:0 0 14px">🔒 Os consumíveis aparecem como itens fixos em TODAS as listas (não podem ser apagados nem totalmente reeditados) — apenas Quantidade e Valor Unitário são ajustáveis. Para adicionar um novo consumível, use Estoque → Consumíveis.</p>
+    <p id="lcListaHeading" style="font-size:12px;color:var(--text-mut);margin:-8px 0 14px;font-weight:600">${listaAtual?`${escapeHtml(listaAtual.nome)} · criada em ${fmtDate(listaAtual.criadoEm.slice(0,10))}`:''}</p>
     <div class="grid grid-4" id="lcStats"></div>
     <div class="table-wrap" style="margin-top:16px"><table><thead><tr>
       <th>Produto</th><th>Categoria</th><th>Qtd</th><th>Unid.</th><th>Valor Unit.</th><th>Subtotal</th><th>Fornecedor</th><th>Tipo</th><th>Estado</th><th></th>
@@ -1482,7 +1442,7 @@ function renderListaCompras(){
 function renderListaComprasBody(){
   const q = (document.getElementById('lcSearch').value||'').toLowerCase();
   const filtroEstado = document.getElementById('lcFiltroEstado').value;
-  const itensDaListaAtual = DB.listaCompras.filter(l=> l.tipoItem==='consumivel' || l.lista_id===activeListaComprasId);
+  const itensDaListaAtual = DB.listaCompras.filter(l=> l.lista_id===activeListaComprasId);
   const rows = itensDaListaAtual.filter(l=> (!q || l.materialNome.toLowerCase().includes(q)) && (!filtroEstado || l.status===filtroEstado)).sort((a,b)=>(a.dataNecessidade||'').localeCompare(b.dataNecessidade||''));
   const pendentes = itensDaListaAtual.filter(l=>l.status==='pendente').length;
   const resolvidos = itensDaListaAtual.filter(l=>['comprado','alugado','recebido'].includes(l.status)).length;
@@ -1496,10 +1456,9 @@ function renderListaComprasBody(){
   document.getElementById('lcTbody').innerHTML = rows.length? rows.map(l=>{
     const ev = DB.eventos.find(e=>e.id===l.evento_id);
     const subtotal = Number(l.quantidade||0)*Number(l.valorUnitario||0);
-    const isFixo = l.tipoItem==='consumivel';
     return `<tr>
       <td><b>${escapeHtml(l.materialNome)}</b>${ev?`<br><span style="font-size:10.5px;color:var(--text-mut)">Evento: ${escapeHtml(ev.nome_evento)}</span>`:''}</td>
-      <td><span class="badge purple">${escapeHtml(l.categoria)}</span>${isFixo?` <span class="badge info" title="Item fixo, disponível em todas as listas">🔒 Fixo</span>`:''}</td>
+      <td><span class="badge purple">${escapeHtml(l.categoria)}</span></td>
       <td><input type="number" value="${l.quantidade}" style="width:60px" onchange="updateListaCompraCampo('${l.id}','quantidade',this.value)"></td>
       <td>${escapeHtml(l.unidade)}</td>
       <td><input type="number" value="${l.valorUnitario}" style="width:80px" onchange="updateListaCompraCampo('${l.id}','valorUnitario',this.value)"></td>
@@ -1509,7 +1468,8 @@ function renderListaComprasBody(){
       <td>${listaCompraEstadoBadge(l.status)}</td>
       <td style="white-space:nowrap">
         ${l.status==='pendente'? `<button class="btn btn-sm btn-turq" onclick="resolverListaCompraRapido('${l.id}')" title="Marcar como resolvido">✓</button>`:''}
-        ${isFixo? `<span style="font-size:10.5px;color:var(--text-mut)">Edite Qtd/Valor</span>` : `<button class="btn btn-sm" onclick="openListaComprasForm('${l.id}')">✎</button> <button class="btn btn-sm btn-danger" onclick="delListaCompra('${l.id}')">🗑</button>`}
+        <button class="btn btn-sm" onclick="openListaComprasForm('${l.id}')">✎</button>
+        <button class="btn btn-sm btn-danger" onclick="delListaCompra('${l.id}')">🗑</button>
       </td>
     </tr>`;
   }).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🛒</div><div class="em-t">Nenhum item nesta lista</div></div></td></tr>`;
@@ -1551,18 +1511,6 @@ function resolverListaCompraRapido(id){
   saveDB(); renderListaComprasBody(); toast('Item marcado como resolvido e estoque atualizado.','ok');
 }
 function addToListaCompras(nome, qtd, eventoId, tipoItem, itemId, categoria, unidade){
-  // Para consumíveis, nunca cria uma linha nova — atualiza a linha fixa já existente (disponível em todas as listas)
-  if(tipoItem==='consumivel' && itemId){
-    syncConsumivelToListaCompras(itemId);
-    const item = DB.listaCompras.find(l=>l.tipoItem==='consumivel' && l.item_id===itemId);
-    if(item){
-      item.quantidade = Number(item.quantidade||0) + Number(qtd||0);
-      if(eventoId){ item.evento_id = eventoId; const ev = DB.eventos.find(e=>e.id===eventoId); if(ev) item.dataNecessidade = ev.data; }
-      item.status = 'pendente';
-      saveDB();
-      return;
-    }
-  }
   ensureListaCompras();
   const ev = eventoId? DB.eventos.find(e=>e.id===eventoId) : null;
   DB.listaCompras.push({
@@ -1575,7 +1523,6 @@ function addToListaCompras(nome, qtd, eventoId, tipoItem, itemId, categoria, uni
 }
 function openListaComprasForm(id){
   const l = id? DB.listaCompras.find(x=>x.id===id) : {id:null, materialNome:'', categoria:'Material Fixo', quantidade:1, unidade:'unid', valorUnitario:0, fornecedor_id:'', tipoAquisicao:'compra', status:'pendente', evento_id:'', dataNecessidade:todayISO(), responsavel:currentUserName(), obs:''};
-  if(l.tipoItem==='consumivel'){ toast('Itens de consumíveis são fixos. Edite apenas a Quantidade e o Valor Unitário diretamente na tabela.','err'); return; }
   const eventosOpts = DB.eventos.map(e=>`<option value="${e.id}" ${l.evento_id===e.id?'selected':''}>${escapeHtml(e.nome_evento)}</option>`).join('');
   openModal(id?'Editar Item da Lista de Compras':'Adicionar Item à Lista de Compras/Aluguer', `
     ${!id? `<p style="font-size:11.5px;color:var(--text-mut);margin-bottom:10px">Este item será adicionado à lista atual: <b>${escapeHtml((DB.listasCompras.find(x=>x.id===activeListaComprasId)||{}).nome||'-')}</b></p>`:''}
@@ -1583,6 +1530,7 @@ function openListaComprasForm(id){
       <div class="field"><label>Produto</label><input id="lcMaterial" value="${escapeHtml(l.materialNome)}"></div>
       <div class="field"><label>Categoria</label><select id="lcCategoria">
         <option value="Material Fixo" ${l.categoria==='Material Fixo'?'selected':''}>Material Fixo</option>
+        <option value="Consumível" ${l.categoria==='Consumível'?'selected':''}>Consumível</option>
         <option value="Material Alugável" ${l.categoria==='Material Alugável'?'selected':''}>Material Alugável</option>
       </select></div>
     </div>
@@ -1611,7 +1559,7 @@ function openListaComprasForm(id){
     <div class="field"><label>Evento associado (opcional)</label><select id="lcEvento"><option value="">-</option>${eventosOpts}</select></div>
     <div class="field"><label>Responsável</label><input id="lcResponsavel" value="${escapeHtml(l.responsavel||currentUserName())}"></div>
     <div class="field"><label>Observações</label><textarea id="lcObs" rows="2">${escapeHtml(l.obs||'')}</textarea></div>
-    <p style="font-size:11px;color:var(--text-mut)">Ao marcar o estado como Comprado/Alugado/Recebido, o estoque é atualizado automaticamente (quando o item tiver origem ligada ao estoque). Os consumíveis são geridos automaticamente como itens fixos a partir de Estoque → Consumíveis e aparecem em todas as listas.</p>
+    <p style="font-size:11px;color:var(--text-mut)">Ao marcar o estado como Comprado/Alugado/Recebido, o estoque é atualizado automaticamente (quando o item tiver origem ligada ao estoque).</p>
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveListaComprasForm('${l.id||''}')">Guardar</button>`, true);
 }
 function saveListaComprasForm(id){
@@ -1640,8 +1588,6 @@ function saveListaComprasForm(id){
   saveDB(); closeModal(); renderListaComprasBody(); toast('Item guardado.','ok');
 }
 function delListaCompra(id){
-  const item = DB.listaCompras.find(x=>x.id===id);
-  if(item && item.tipoItem==='consumivel'){ toast('Itens fixos de consumíveis não podem ser removidos daqui.','err'); return; }
   if(!confirm('Remover este item da lista?')) return;
   DB.listaCompras = DB.listaCompras.filter(x=>x.id!==id); saveDB(); renderListaComprasBody();
 }
@@ -1650,7 +1596,7 @@ async function exportListaComprasPDF(){
   const doc = new jsPDF();
   const listaAtual = DB.listasCompras.find(x=>x.id===activeListaComprasId);
   const nomeLista = listaAtual? listaAtual.nome : 'Lista de Compras';
-  const itens = DB.listaCompras.filter(l=> l.tipoItem==='consumivel' || l.lista_id===activeListaComprasId);
+  const itens = DB.listaCompras.filter(l=> l.lista_id===activeListaComprasId);
   const logoPng = await loadLogoPng();
   if(logoPng){ try{ doc.addImage(logoPng, 'PNG', 15, 10, 20, 20); }catch(e){} }
   doc.setFontSize(15); doc.setTextColor(91,42,134);
@@ -2870,7 +2816,11 @@ async function exportFacturaPDF(id){
     startY:64, head:[['Cód. Produto','Descrição do Produto','Quantidade']], body,
     headStyles:{fillColor:[91,42,134]}, styles:{fontSize:9.5}
   });
-  let y = doc.lastAutoTable.finalY + 10;
+  const totalQtdItens = f.itens.reduce((s,i)=>s+Number(i.qtd||0),0);
+  let y = doc.lastAutoTable.finalY + 8;
+  doc.setFontSize(9.5); doc.setTextColor(80); doc.setFont(undefined,'bold');
+  doc.text(`Quantidade Total de Itens: ${totalQtdItens}`, 15, y); doc.setFont(undefined,'normal');
+  y+=9;
   doc.setFontSize(11); doc.setTextColor(20);
   doc.text(`Desconto: -${fmtMoney(f.desconto)}`, 15, y); y+=7;
   if(f.retencaoAtiva){
@@ -3581,13 +3531,15 @@ function delUser(id){
 }
 
 // ============ INIT ============
-function init(){
+async function init(){
   loadDB();
   document.getElementById('yrNow').textContent = new Date().getFullYear();
   document.getElementById('loginLogo').src = LOGO_B64;
   document.getElementById('sideLogo').src = LOGO_B64;
   loadLogoPng();
   applyTheme();
+  const synced = await loadFromSupabase();
+  if(synced) applyTheme();
   if(DB.currentUser && DB.users.find(u=>u.id===DB.currentUser)){
     enterApp();
   }
