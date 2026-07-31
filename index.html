@@ -443,6 +443,27 @@ const EVENTO_STATUS = {
   'finalizado': {label:'Finalizado', color:'#1FA96A'},
   'cancelado': {label:'Cancelado', color:'#8b8b8b'}
 };
+// Catálogo de cores de balões: Cor Base -> Tom -> Cor Resultante (conforme tabela fornecida)
+const BALOES_CATALOGO = {
+  'Vermelho': {claro:'Vermelho claro / Salmão', escuro:'Vermelho escuro / Bordô', metalizado:'Vermelho metálico', vibrante:'Vermelho vivo', transparente:'Vermelho transparente'},
+  'Azul': {claro:'Azul bebê', escuro:'Azul marinho', metalizado:'Azul metálico', vibrante:'Azul royal', transparente:'Azul transparente'},
+  'Amarelo': {claro:'Amarelo claro', escuro:'Amarelo escuro / Mostarda', metalizado:'Amarelo dourado', vibrante:'Amarelo ouro', transparente:'Amarelo transparente'},
+  'Verde': {claro:'Verde menta', escuro:'Verde escuro / Bandeira', metalizado:'Verde metálico', vibrante:'Verde limão', transparente:'Verde transparente'},
+  'Rosa': {claro:'Rosa bebê', escuro:'Rosa escuro / Pink queimado', metalizado:'Rosa gold', vibrante:'Rosa choque', transparente:'Rosa transparente'},
+  'Roxo': {claro:'Lilás / Lavanda', escuro:'Roxo escuro', metalizado:'Roxo metálico', vibrante:'Violeta', transparente:'Roxo transparente'},
+  'Laranja': {claro:'Pêssego', escuro:'Laranja queimado', metalizado:'Laranja metálico', vibrante:'Laranja vivo', transparente:'Laranja transparente'},
+  'Marrom': {claro:'Bege / Nude', escuro:'Marrom café', metalizado:'Bronze', vibrante:'Caramelo', transparente:'Marrom transparente'},
+  'Cinza': {claro:'Cinza claro', escuro:'Cinza chumbo / Grafite', metalizado:'Prata / Cromado', vibrante:'', transparente:'Cinza fumê'},
+  'Branco/Preto': {claro:'Branco', escuro:'Preto', metalizado:'Dourado / Prata', vibrante:'', transparente:'Cristal (incolor)'},
+  'Turquesa': {claro:'Verde água', escuro:'Azul petróleo', metalizado:'Turquesa metálico', vibrante:'Ciano', transparente:'Turquesa transparente'}
+};
+const BALAO_TONS = [
+  {key:'claro', label:'Tom Claro'},
+  {key:'escuro', label:'Tom Escuro'},
+  {key:'metalizado', label:'Metalizado'},
+  {key:'vibrante', label:'Vibrante'},
+  {key:'transparente', label:'Transparente'}
+];
 const MENU = [
   {id:'dashboard', label:'Dashboard', ic:'📊'},
   {id:'agenda', label:'Agenda', ic:'📅'},
@@ -483,46 +504,8 @@ function simpleHash(str){
   return 'h'+Math.abs(hash).toString(36)+str.length;
 }
 
-async function loadFromSupabase(){
-  try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
-      method:'GET',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json'
-      }
-    });
-    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
-    const rows = await response.json();
-    if(rows && rows.length){
-      const payload = rows[0].payload;
-      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
-    }
-  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
-  return false;
-}
-
-async function saveToSupabase(){
-  try{
-    const payload = JSON.stringify(DB);
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
-      method:'PATCH',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
-    });
-    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
-  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
-}
-
 function seedData(){
   return {
-
     config:{
       empresa:{nome:'Yolandia Decorações', telefone:'+244 9XX XXX XXX', email:'geral@yolandiadecoracoes.ao', nif:'5000000000', endereco:'Talatona, Luanda, Angola'},
       retencaoFonte:{ativo:true, percentual:6.5},
@@ -610,6 +593,7 @@ function migrateDB(){
   if(!DB.ocorrencias) DB.ocorrencias=[];
   if(!DB.listaCompras) DB.listaCompras=[];
   if(!DB.listasCompras) DB.listasCompras=[];
+  if(!DB.baloes) DB.baloes=[];
   if(!DB.fornecedores) DB.fornecedores=[];
   if(!DB.consumoConsumiveis) DB.consumoConsumiveis=[];
   if(!DB.config) DB.config={};
@@ -623,7 +607,7 @@ function migrateDB(){
   if(!DB.config.iban) DB.config.iban = 'AO06 0040 0000 8903 9518 1024 0';
   if(!DB.config.destinatario) DB.config.destinatario = 'YOLANDIA COMERCIO PRESTACAO SERVICO LDA';
 
-  ['materiaisFixos','consumiveis','alugaveis'].forEach(key=>{
+  ['materiaisFixos','consumiveis','alugaveis','baloes'].forEach(key=>{
     (DB[key]||[]).forEach(m=>{
       if(!m.historico) m.historico=[];
       if(!m.tipoAquisicao) m.tipoAquisicao='compra';
@@ -633,6 +617,12 @@ function migrateDB(){
         m.fornecedor_id = legacyNome? findOrCreateFornecedorByName(legacyNome) : '';
       }
     });
+  });
+  (DB.baloes||[]).forEach(b=>{
+    if(b.unidade===undefined) b.unidade='Unidade';
+    if(b.estoqueMinimo===undefined) b.estoqueMinimo=20;
+    if(b.tamanhoCustom===undefined) b.tamanhoCustom='';
+    if(!b.corResultado && BALOES_CATALOGO[b.corBase]) b.corResultado = BALOES_CATALOGO[b.corBase][b.tom] || b.corBase;
   });
   (DB.users||[]).forEach(u=>{
     if(u.senha && !u.senhaHash){ u.senhaHash = simpleHash(u.senha); delete u.senha; }
@@ -685,6 +675,42 @@ function migrateDB(){
   });
   saveDB();
 }
+async function loadFromSupabase(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+      method:'GET',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json'
+      }
+    });
+    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
+    const rows = await response.json();
+    if(rows && rows.length){
+      const payload = rows[0].payload;
+      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
+    }
+  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
+  return false;
+}
+
+async function saveToSupabase(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+      method:'PATCH',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
+    });
+    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
+  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
+}
+
 function saveDB(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
   catch(e){ toast('Erro ao guardar dados localmente.', 'err'); }
@@ -1122,6 +1148,7 @@ function renderEstoque(){
     <div class="tabs">
       <button class="${estoqueTab==='fixos'?'active':''}" onclick="setEstoqueTab('fixos')">Materiais Fixos</button>
       <button class="${estoqueTab==='consumiveis'?'active':''}" onclick="setEstoqueTab('consumiveis')">Consumíveis</button>
+      <button class="${estoqueTab==='baloes'?'active':''}" onclick="setEstoqueTab('baloes')">🎈 Balões</button>
     </div>
     <div id="estoqueBody"></div>
   `;
@@ -1156,7 +1183,7 @@ function renderEstoqueBody(){
         <td>${fmtMoney(m.valor)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openMaterialFixoForm('${m.id}')">✎</button> <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','fixo')" title="Histórico">🕘</button> <button class="btn btn-sm btn-danger" onclick="delMaterialFixo('${m.id}')">🗑</button></td>
       </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">📦</div><div class="em-t">Nenhum material encontrado</div></div></td></tr>`;
-  } else {
+  } else if(estoqueTab==='consumiveis'){
     el.innerHTML = `
       <div class="toolbar">
         <div class="search"><input id="csSearch" placeholder="Pesquisar consumível..." oninput="renderEstoqueBody()"></div>
@@ -1187,6 +1214,51 @@ function renderEstoqueBody(){
           <button class="btn btn-sm btn-danger" onclick="delConsumivel('${m.id}')">🗑</button>
         </td>
       </tr>`}).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🎈</div><div class="em-t">Nenhum consumível encontrado</div></div></td></tr>`;
+  } else {
+    el.innerHTML = `
+      <div class="toolbar">
+        <div class="search"><input id="blSearch" placeholder="Pesquisar por cor, tom ou tamanho..." oninput="renderEstoqueBody()"></div>
+        <select id="blFiltroFornecedor" onchange="renderEstoqueBody()" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface-2);color:var(--text)">
+          <option value="">Todos os fornecedores</option>
+          ${DB.fornecedores.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join('')}
+        </select>
+        <button class="btn btn-turq" onclick="exportBaloesExcel()">⬇ Excel</button>
+        <label class="btn btn-ghost">⬆ Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importBaloesExcel(this)"></label>
+        <button class="btn btn-brand" onclick="openBalaoForm()">+ Novo Balão</button>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-mut);margin:-6px 0 14px">Cada combinação de Cor Base + Tom + Tamanho é um item de stock independente. A cor resultante é calculada automaticamente a partir do catálogo.</p>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Cor Resultante</th><th>Base / Tom</th><th>Tamanho</th><th>Qtd</th><th>Unid.</th><th>Mín.</th><th>Aquisição</th><th>Fornecedor</th><th></th>
+      </tr></thead><tbody id="blTbody"></tbody></table></div>`;
+    const q = (document.getElementById('blSearch').value||'').toLowerCase();
+    const filtroForn = document.getElementById('blFiltroFornecedor').value;
+    const rows = DB.baloes.filter(b=>{
+      const tamanhoFinal = b.tamanho==='Outro'? b.tamanhoCustom : b.tamanho;
+      const matchQ = !q || (b.corResultado+b.corBase+b.tom+tamanhoFinal).toLowerCase().includes(q);
+      const matchForn = !filtroForn || b.fornecedor_id===filtroForn;
+      return matchQ && matchForn;
+    });
+    document.getElementById('blTbody').innerHTML = rows.length? rows.map(b=>{
+      const low = Number(b.quantidade) <= Number(b.estoqueMinimo);
+      const tamanhoFinal = b.tamanho==='Outro'? b.tamanhoCustom : b.tamanho;
+      const tomLbl = (BALAO_TONS.find(t=>t.key===b.tom)||{}).label || b.tom;
+      return `<tr>
+        <td><b>${escapeHtml(b.corResultado)}</b></td>
+        <td style="font-size:11.5px;color:var(--text-mut)">${escapeHtml(b.corBase)} · ${escapeHtml(tomLbl)}</td>
+        <td>${escapeHtml(tamanhoFinal)}</td>
+        <td style="${low?'color:var(--danger);font-weight:700':''}">${b.quantidade} ${low?'⚠️':''}</td>
+        <td>${escapeHtml(b.unidade)}</td>
+        <td>${b.estoqueMinimo}</td>
+        <td><span class="badge purple">${escapeHtml(balaoAquisicaoTexto(b.tipoAquisicao))}</span></td>
+        <td style="font-size:12px">${escapeHtml(fornecedorNome(b.fornecedor_id))}</td>
+        <td style="white-space:nowrap">
+          ${low? `<button class="btn btn-sm btn-turq" onclick="addBalaoToListaCompras('${b.id}')" title="Adicionar à Lista de Compras">🛒</button>`:''}
+          <button class="btn btn-sm" onclick="openBalaoForm('${b.id}')">✎</button>
+          <button class="btn btn-sm" onclick="viewHistoricoMaterial('${b.id}','balao')" title="Histórico">🕘</button>
+          <button class="btn btn-sm btn-danger" onclick="delBalao('${b.id}')">🗑</button>
+        </td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="em-ic">🎈</div><div class="em-t">Nenhum balão cadastrado</div></div></td></tr>`;
   }
 }
 function estadoBadge(estado){
@@ -1331,12 +1403,190 @@ function addToListaComprasFromEstoque(id){
   toast('Item adicionado à Lista de Compras.','ok');
   renderEstoqueBody();
 }
+function balaoAquisicaoTexto(t){
+  const map={compra:'Compra',oferta:'Oferta',producao:'Produção Própria',outro:'Outro'};
+  return map[t]||t;
+}
+function openBalaoForm(id){
+  const b = id? DB.baloes.find(x=>x.id===id) : {id:null, corBase:'Vermelho', tom:'claro', corResultado:'', tamanho:'10"', tamanhoCustom:'', quantidade:0, unidade:'Unidade', precoCompra:0, estoqueMinimo:20, tipoAquisicao:'compra', fornecedor_id:''};
+  const coresOpts = Object.keys(BALOES_CATALOGO).map(c=>`<option value="${c}" ${b.corBase===c?'selected':''}>${c}</option>`).join('');
+  const tonsOpts = BALAO_TONS.map(t=>`<option value="${t.key}" ${b.tom===t.key?'selected':''}>${t.label}</option>`).join('');
+  openModal(id?'Editar Balão':'Novo Balão', `
+    <div class="form-row">
+      <div class="field"><label>Cor Base</label><select id="blCorBase" onchange="updateBalaoResultado()">${coresOpts}</select></div>
+      <div class="field"><label>Tom</label><select id="blTom" onchange="updateBalaoResultado()">${tonsOpts}</select></div>
+    </div>
+    <div class="field">
+      <label>Cor Resultante</label>
+      <input id="blCorResultado" value="" disabled style="font-weight:700;background:var(--surface-2)">
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Tamanho</label><select id="blTamanho" onchange="toggleBalaoTamanhoCustom()">
+        <option value='10"' ${b.tamanho==='10"'?'selected':''}>10"</option>
+        <option value='18"' ${b.tamanho==='18"'?'selected':''}>18"</option>
+        <option value='36"' ${b.tamanho==='36"'?'selected':''}>36"</option>
+        <option value='Outro' ${b.tamanho==='Outro'?'selected':''}>Outro</option>
+      </select></div>
+      <div class="field" id="blTamanhoCustomBox" style="display:${b.tamanho==='Outro'?'block':'none'}">
+        <label>Tamanho personalizado</label><input id="blTamanhoCustom" value="${escapeHtml(b.tamanhoCustom||'')}" placeholder="ex: 5&quot;, gigante...">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Quantidade em Stock</label><input type="number" id="blQtd" value="${b.quantidade}"></div>
+      <div class="field"><label>Unidade</label><select id="blUnidade">
+        ${['Unidade','Pacote','Saco','Caixa'].map(u=>`<option value="${u}" ${b.unidade===u?'selected':''}>${u}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Preço de Compra</label><input type="number" id="blPreco" value="${b.precoCompra}"></div>
+      <div class="field"><label>Stock Mínimo</label><input type="number" id="blMin" value="${b.estoqueMinimo}"></div>
+    </div>
+    <div class="field"><label>Tipo de Aquisição</label><select id="blTipoAquisicao">
+      <option value="compra" ${b.tipoAquisicao==='compra'?'selected':''}>Compra</option>
+      <option value="oferta" ${b.tipoAquisicao==='oferta'?'selected':''}>Oferta</option>
+      <option value="producao" ${b.tipoAquisicao==='producao'?'selected':''}>Produção Própria</option>
+      <option value="outro" ${b.tipoAquisicao==='outro'?'selected':''}>Outro</option>
+    </select></div>
+    ${fornecedorPickerHtml('bl', b.fornecedor_id)}
+    <p style="font-size:11px;color:var(--text-mut);margin-top:6px">Cada combinação de Cor Base + Tom + Tamanho é tratada como um item de stock independente.</p>
+  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveBalao('${b.id||''}')">Guardar</button>`, true);
+  setTimeout(updateBalaoResultado, 0);
+}
+function updateBalaoResultado(){
+  const corBase = document.getElementById('blCorBase').value;
+  const tom = document.getElementById('blTom').value;
+  const resultado = (BALOES_CATALOGO[corBase]||{})[tom] || '-';
+  document.getElementById('blCorResultado').value = resultado;
+}
+function toggleBalaoTamanhoCustom(){
+  const v = document.getElementById('blTamanho').value;
+  document.getElementById('blTamanhoCustomBox').style.display = v==='Outro'? 'block':'none';
+}
+function saveBalao(id){
+  const corBase = document.getElementById('blCorBase').value;
+  const tom = document.getElementById('blTom').value;
+  const corResultado = (BALOES_CATALOGO[corBase]||{})[tom] || `${corBase} ${tom}`;
+  const tamanhoSel = document.getElementById('blTamanho').value;
+  const tamanhoCustomEl = document.getElementById('blTamanhoCustom');
+  const tamanhoCustom = tamanhoCustomEl? tamanhoCustomEl.value.trim() : '';
+  if(tamanhoSel==='Outro' && !tamanhoCustom){ toast('Indique o tamanho personalizado.','err'); return; }
+  const novaQtd = Number(document.getElementById('blQtd').value)||0;
+  const novoPreco = Number(document.getElementById('blPreco').value)||0;
+  const usuarioAtual = currentUserName();
+  const data = {
+    corBase, tom, corResultado, tamanho: tamanhoSel, tamanhoCustom: tamanhoSel==='Outro'? tamanhoCustom : '',
+    quantidade: novaQtd, unidade: document.getElementById('blUnidade').value,
+    precoCompra: novoPreco, estoqueMinimo: Number(document.getElementById('blMin').value)||0,
+    tipoAquisicao: document.getElementById('blTipoAquisicao').value,
+    fornecedor_id: resolveFornecedorFromForm('bl')
+  };
+  const tamanhoFinal = data.tamanho==='Outro'? data.tamanhoCustom : data.tamanho;
+  const duplicado = DB.baloes.find(x=> x.id!==id && x.corBase===corBase && x.tom===tom && (x.tamanho==='Outro'? x.tamanhoCustom : x.tamanho)===tamanhoFinal);
+  if(duplicado){ toast('Já existe um item de stock para esta combinação Cor + Tom + Tamanho. Edite o item existente.','err'); return; }
+  if(id){
+    const existing = DB.baloes.find(x=>x.id===id);
+    const hist = existing.historico || [];
+    if(existing.precoCompra !== novoPreco) hist.push({data:todayISO(), campo:'Preço de compra', antes:existing.precoCompra, depois:novoPreco, usuario:usuarioAtual});
+    if(existing.quantidade !== novaQtd) hist.push({data:todayISO(), campo:'Quantidade', antes:existing.quantidade, depois:novaQtd, usuario:usuarioAtual});
+    Object.assign(existing, data); existing.historico = hist;
+  } else {
+    data.id = uid('bl'); data.historico=[{data:todayISO(), campo:'Registo criado', antes:'-', depois:`Qtd ${novaQtd}`, usuario:usuarioAtual}];
+    DB.baloes.push(data);
+  }
+  saveDB(); closeModal(); renderEstoqueBody(); toast('Balão guardado.','ok');
+}
+function delBalao(id){
+  if(!confirm('Remover este item de balão?')) return;
+  DB.baloes = DB.baloes.filter(x=>x.id!==id); saveDB(); renderEstoqueBody();
+}
+function addBalaoToListaCompras(id){
+  const b = DB.baloes.find(x=>x.id===id);
+  if(!b) return;
+  const tamanhoFinal = b.tamanho==='Outro'? b.tamanhoCustom : b.tamanho;
+  const faltam = Math.max(Number(b.estoqueMinimo||0)*2 - Number(b.quantidade||0), 1);
+  addToListaCompras(`${b.corResultado} ${tamanhoFinal}`, faltam, '', 'balao', b.id, 'Balão', b.unidade||'Unidade');
+  toast('Item adicionado à Lista de Compras.','ok');
+  renderEstoqueBody();
+}
+async function exportBaloesExcel(){
+  try{
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Yolandia Decorações';
+    const ws = wb.addWorksheet('Balões');
+    ws.columns = [
+      {header:'Cor Base', key:'corBase', width:14},
+      {header:'Tom', key:'tomLbl', width:14},
+      {header:'Cor Resultante', key:'corResultado', width:22},
+      {header:'Tamanho', key:'tamanho', width:12},
+      {header:'Quantidade', key:'quantidade', width:12},
+      {header:'Unidade', key:'unidade', width:12},
+      {header:'Preço Compra', key:'precoCompra', width:14},
+      {header:'Estoque Mínimo', key:'estoqueMinimo', width:14},
+      {header:'Tipo Aquisição', key:'tipoAquisicaoTxt', width:16},
+      {header:'Fornecedor', key:'fornecedorNome', width:20}
+    ];
+    ws.getRow(1).font = {bold:true, color:{argb:'FFFFFFFF'}};
+    ws.getRow(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF5B2A86'}};
+    DB.baloes.forEach(b=>{
+      const tamanhoFinal = b.tamanho==='Outro'? b.tamanhoCustom : b.tamanho;
+      const tomLbl = (BALAO_TONS.find(t=>t.key===b.tom)||{}).label || b.tom;
+      ws.addRow({corBase:b.corBase, tomLbl, corResultado:b.corResultado, tamanho:tamanhoFinal, quantidade:b.quantidade, unidade:b.unidade, precoCompra:b.precoCompra, estoqueMinimo:b.estoqueMinimo, tipoAquisicaoTxt:balaoAquisicaoTexto(b.tipoAquisicao), fornecedorNome:fornecedorNome(b.fornecedor_id)});
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'Estoque_Baloes_Yolandia.xlsx';
+    link.click();
+    toast('Balões exportados em Excel.','ok');
+  }catch(e){ console.error(e); toast('Erro ao exportar Excel.','err'); }
+}
+function importBaloesExcel(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(e.target.result);
+      const ws = wb.worksheets[0];
+      let importados = 0, ignorados = 0;
+      ws.eachRow((row, rowNumber)=>{
+        if(rowNumber===1) return;
+        const corBase = String(row.getCell(1).value||'').trim();
+        const tomLbl = String(row.getCell(2).value||'').trim();
+        const tamanho = String(row.getCell(4).value||'').trim();
+        const quantidade = Number(row.getCell(5).value)||0;
+        const unidade = String(row.getCell(6).value||'Unidade').trim();
+        const precoCompra = Number(row.getCell(7).value)||0;
+        const estoqueMinimo = Number(row.getCell(8).value)||0;
+        const fornecedorNomeStr = String(row.getCell(10).value||'').trim();
+        if(!corBase || !BALOES_CATALOGO[corBase]){ ignorados++; return; }
+        const tomObj = BALAO_TONS.find(t=>t.label.toLowerCase()===tomLbl.toLowerCase());
+        const tom = tomObj? tomObj.key : 'claro';
+        const corResultado = (BALOES_CATALOGO[corBase]||{})[tom] || corBase;
+        const fornecedor_id = fornecedorNomeStr? findOrCreateFornecedorByName(fornecedorNomeStr) : '';
+        const existing = DB.baloes.find(x=>x.corBase===corBase && x.tom===tom && (x.tamanho==='Outro'?x.tamanhoCustom:x.tamanho)===tamanho);
+        if(existing){
+          existing.quantidade = quantidade; existing.precoCompra = precoCompra; existing.estoqueMinimo = estoqueMinimo; existing.unidade = unidade;
+        } else {
+          const isTamanhoPadrao = ['10"','18"','36"'].includes(tamanho);
+          DB.baloes.push({id:uid('bl'), corBase, tom, corResultado, tamanho: isTamanhoPadrao? tamanho : 'Outro', tamanhoCustom: isTamanhoPadrao? '' : tamanho, quantidade, unidade, precoCompra, estoqueMinimo, tipoAquisicao:'compra', fornecedor_id, historico:[{data:todayISO(), campo:'Importado via Excel', antes:'-', depois:`Qtd ${quantidade}`, usuario:currentUserName()}]});
+        }
+        importados++;
+      });
+      saveDB(); renderEstoqueBody();
+      toast(`Importação concluída: ${importados} registo(s) processado(s)${ignorados?`, ${ignorados} ignorado(s)`:''}.`, 'ok');
+    }catch(err){ console.error(err); toast('Erro ao importar o ficheiro Excel.','err'); }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
 function viewHistoricoMaterial(id, tipo){
-  const srcMap = {fixo:DB.materiaisFixos, consumivel:DB.consumiveis, alugavel:DB.alugaveis};
+  const srcMap = {fixo:DB.materiaisFixos, consumivel:DB.consumiveis, alugavel:DB.alugaveis, balao:DB.baloes};
   const src = srcMap[tipo];
   const m = src.find(x=>x.id===id);
   if(!m) return;
-  openModal('Histórico — '+m.nome, `
+  openModal('Histórico — '+(m.nome||m.corResultado), `
     ${m.historico && m.historico.length? m.historico.slice().reverse().map(h=>`
       <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px">
         <b>${escapeHtml(h.campo)}</b> — ${fmtDate(h.data)}<br>
