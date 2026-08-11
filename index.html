@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="shortcut icon" type="image/png" href="favicon.png">
 <title>Yolandia Decorações</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -664,6 +662,37 @@ function migrateDB(){
     const listaMigracaoId = DB.listasCompras[0].id;
     itensOrfaosListaCompras.forEach(l=>{ l.lista_id = listaMigracaoId; });
   }
+  // Listas de Compra passam a ser sempre sincronizadas automaticamente com os eventos
+  DB.listasCompras.forEach(l=>{ if(l.evento_id===undefined) l.evento_id=null; });
+  const listasGenericasSemEvento = DB.listasCompras.filter(l=>!l.evento_id);
+  if(listasGenericasSemEvento.length>1){
+    const principal = listasGenericasSemEvento[0];
+    principal.nome = 'Compras Gerais';
+    const idsRemover = listasGenericasSemEvento.slice(1).map(l=>l.id);
+    DB.listaCompras.forEach(item=>{ if(idsRemover.includes(item.lista_id)) item.lista_id = principal.id; });
+    DB.listasCompras = DB.listasCompras.filter(l=> l.evento_id || l.id===principal.id);
+  } else if(listasGenericasSemEvento.length===1){
+    listasGenericasSemEvento[0].nome = 'Compras Gerais';
+  } else {
+    DB.listasCompras.push({id:uid('lst'), nome:'Compras Gerais', criadoEm:new Date().toISOString(), responsavel:'', evento_id:null});
+  }
+  DB.eventos.forEach(ev=>{
+    const nomeEsperado = `${ev.nome_evento} — ${fmtDate(ev.data)}`;
+    let lst = DB.listasCompras.find(l=>l.evento_id===ev.id);
+    if(!lst){ DB.listasCompras.push({id:uid('lst'), nome:nomeEsperado, criadoEm:new Date().toISOString(), responsavel:'', evento_id:ev.id}); }
+    else if(lst.nome !== nomeEsperado){ lst.nome = nomeEsperado; }
+  });
+  const listaGeralIdMigracao = (DB.listasCompras.find(l=>!l.evento_id)||{}).id;
+  DB.listaCompras.forEach(item=>{
+    if(!item.lista_id || !DB.listasCompras.find(l=>l.id===item.lista_id)){
+      if(item.evento_id){
+        const lstEv = DB.listasCompras.find(l=>l.evento_id===item.evento_id);
+        item.lista_id = lstEv? lstEv.id : listaGeralIdMigracao;
+      } else {
+        item.lista_id = listaGeralIdMigracao;
+      }
+    }
+  });
   (DB.eventos||[]).forEach(ev=>{
     (ev.materiais||[]).forEach(m=>{
       if(m.qtdDisponivel===undefined) m.qtdDisponivel=0;
@@ -1153,6 +1182,52 @@ async function importMateriaisFixosExcel(input){
   reader.readAsArrayBuffer(file);
   input.value = '';
 }
+async function importConsumiveisExcel(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(e.target.result);
+      const ws = wb.worksheets[0];
+      let importados = 0, atualizados = 0;
+      ws.eachRow((row, rowNumber)=>{
+        if(rowNumber===1) return;
+        const nome = String(row.getCell(1).value||'').trim();
+        if(!nome) return;
+        const tipoRaw = String(row.getCell(2).value||'outro').trim().toLowerCase();
+        const tipo = (tipoRaw==='balao'||tipoRaw==='balão')? 'balao' : 'outro';
+        const cor = String(row.getCell(3).value||'').trim();
+        const tamanho = String(row.getCell(4).value||'').trim();
+        const quantidade = Number(row.getCell(5).value)||0;
+        const unidade = String(row.getCell(6).value||'unid').trim();
+        const precoCompra = Number(row.getCell(7).value)||0;
+        const estoqueMinimo = Number(row.getCell(8).value)||0;
+        const fornecedorNomeStr = String(row.getCell(9).value||'').trim();
+        const fornecedor_id = fornecedorNomeStr? findOrCreateFornecedorByName(fornecedorNomeStr) : '';
+        const existing = DB.consumiveis.find(x=>x.nome.toLowerCase()===nome.toLowerCase() && (x.cor||'').toLowerCase()===cor.toLowerCase() && (x.tamanho||'').toLowerCase()===tamanho.toLowerCase());
+        if(existing){
+          existing.quantidade = quantidade; existing.precoCompra = precoCompra; existing.estoqueMinimo = estoqueMinimo; existing.unidade = unidade;
+          if(fornecedor_id) existing.fornecedor_id = fornecedor_id;
+          if(!existing.historico) existing.historico=[];
+          existing.historico.push({data:todayISO(), campo:'Atualizado via importação Excel', antes:'-', depois:`Qtd ${quantidade} · ${fmtMoney(precoCompra)}`, usuario:currentUserName()});
+          atualizados++;
+        } else {
+          DB.consumiveis.push({
+            id:uid('cs'), nome, tipo, cor, tamanho, quantidade, unidade, precoCompra,
+            fornecedor_id, tipoAquisicao:'compra', estoqueMinimo, foto:'',
+            historico:[{data:todayISO(), campo:'Importado via Excel', antes:'-', depois:`Qtd ${quantidade} · ${fmtMoney(precoCompra)}`, usuario:currentUserName()}]
+          });
+          importados++;
+        }
+      });
+      saveDB(); renderEstoqueBody();
+      toast(`Importação concluída: ${importados} novo(s), ${atualizados} atualizado(s). Adicione as fotografias manualmente em cada item.`, 'ok');
+    }catch(err){ console.error(err); toast('Erro ao importar o ficheiro Excel.','err'); }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
 let estoqueTab = 'fixos';
 function renderEstoque(){
   const c = document.getElementById('content');
@@ -1202,8 +1277,10 @@ function renderEstoqueBody(){
       <div class="toolbar">
         <div class="search"><input id="csSearch" placeholder="Pesquisar consumível..." oninput="renderEstoqueBody()"></div>
         <button class="btn btn-turq" onclick="exportEstoquePDF()">⬇ PDF</button>
+        <label class="btn btn-ghost">⬆ Upload Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importConsumiveisExcel(this)"></label>
         <button class="btn btn-brand" onclick="openConsumivelForm()">+ Novo Consumível</button>
       </div>
+      <p style="font-size:11px;color:var(--text-mut);margin:-8px 0 14px">Colunas esperadas: Nome, Tipo (balão/outro), Cor, Tamanho, Quantidade, Unidade, Preço de Compra, Estoque Mínimo, Fornecedor. As fotografias não são importadas — devem ser adicionadas diretamente em cada item.</p>
       <div class="table-wrap"><table><thead><tr>
         <th>Foto</th><th>Nome</th><th>Cor</th><th>Tamanho</th><th>Qtd</th><th>Unid.</th><th>Estoque Mín.</th><th>Aquisição</th><th>Fornecedor</th><th></th>
       </tr></thead><tbody id="csTbody"></tbody></table></div>`;
@@ -1792,12 +1869,12 @@ function resolverListaCompraRapido(id){
   saveDB(); renderListaComprasBody(); toast('Item marcado como resolvido e estoque atualizado.','ok');
 }
 function addToListaCompras(nome, qtd, eventoId, tipoItem, itemId, categoria, unidade){
-  ensureListaCompras();
   const ev = eventoId? DB.eventos.find(e=>e.id===eventoId) : null;
+  const lista = eventoId? ensureListaComprasParaEvento(eventoId) : (DB.listasCompras.find(l=>l.id===activeListaComprasId) || ensureListaComprasGeral());
   DB.listaCompras.push({
     id:uid('lc'), materialNome:nome, categoria: categoria||'Material Fixo', quantidade:qtd, unidade: unidade||'unid',
     valorUnitario:0, fornecedor_id:'', tipoAquisicao: tipoItem==='alugavel'?'aluguer':'compra',
-    item_id:itemId||null, tipoItem: tipoItem||null, lista_id: activeListaComprasId,
+    item_id:itemId||null, tipoItem: tipoItem||null, lista_id: lista.id,
     evento_id:eventoId||'', dataNecessidade: ev? ev.data : todayISO(), status:'pendente', responsavel: currentUserName(), obs:'', criadoEm:new Date().toISOString()
   });
   saveDB();
@@ -2571,6 +2648,7 @@ function calcDisponibilidadeMaterial(materialId, tipo, excludeEventoId){
   if(tipo==='alugavel'){ comprometido += qtdReservadaHoje(materialId); }
   return m.quantidade - comprometido;
 }
+let pendingChecklistItem = null;
 function addChecklistItem(){
   const [id, tipo] = document.getElementById('ckMatSel').value.split('|');
   const qtd = Number(document.getElementById('ckQtdNec').value)||1;
@@ -2578,20 +2656,41 @@ function addChecklistItem(){
   const srcMap = {fixo:DB.materiaisFixos, alugavel:DB.alugaveis, consumivel:DB.consumiveis, balao:DB.baloes};
   const src = srcMap[tipo];
   const m = src.find(x=>x.id===id);
+  if(!m){ toast('Selecione um material válido na lista.','err'); return; }
   const e = DB.eventos.find(x=>x.id===checklistEventoId);
   const nomeItem = tipo==='balao'? `${m.corResultado} ${m.tamanho==='Outro'?m.tamanhoCustom:m.tamanho}` : m.nome;
-
   const disponivel = calcDisponibilidadeMaterial(id, tipo, e.id);
+  pendingChecklistItem = {id, tipo, qtd, obsItem, nomeItem, disponivel};
+
   if(qtd > disponivel){
     const falta = qtd - Math.max(disponivel,0);
-    const querAdicionar = confirm(`⚠️ Estoque insuficiente para "${nomeItem}".\nDisponível: ${Math.max(disponivel,0)} · Necessário: ${qtd}\n\nDeseja adicionar ${falta} unidade(s) à Lista de Compra/Aluguer?`);
-    if(querAdicionar){
-      const categoria = tipo==='consumivel' ? 'Consumível' : (tipo==='alugavel' ? 'Material Alugável' : tipo==='balao' ? 'Balão' : 'Material Fixo');
-      addToListaCompras(nomeItem, falta, e.id, tipo, id, categoria, m.unidade||'unid');
-      toast('Item adicionado à Lista de Compra/Aluguer.','ok');
-    }
+    openModal('⚠️ Estoque insuficiente', `
+      <p style="font-size:13.5px">Estoque insuficiente para <b>${escapeHtml(nomeItem)}</b>.</p>
+      <p style="font-size:13px;color:var(--text-mut)">Disponível: ${Math.max(disponivel,0)} · Necessário: ${qtd}</p>
+      <p style="font-size:13px;margin-top:10px">Deseja adicionar ${falta} unidade(s) à Lista de Compra/Aluguer deste evento?</p>
+    `, `
+      <button class="btn" onclick="finalizarAddChecklistItem(false)">Só adicionar ao checklist</button>
+      <button class="btn btn-brand" onclick="finalizarAddChecklistItem(true)">Sim, adicionar à Lista</button>
+    `);
+    return;
+  }
+  finalizarAddChecklistItem(false);
+}
+function finalizarAddChecklistItem(adicionarListaCompra){
+  if(!pendingChecklistItem) return;
+  const {id, tipo, qtd, obsItem, nomeItem, disponivel} = pendingChecklistItem;
+  const srcMap = {fixo:DB.materiaisFixos, alugavel:DB.alugaveis, consumivel:DB.consumiveis, balao:DB.baloes};
+  const m = srcMap[tipo].find(x=>x.id===id);
+  const e = DB.eventos.find(x=>x.id===checklistEventoId);
+  if(!m || !e){ pendingChecklistItem = null; closeModal(); return; }
+  if(adicionarListaCompra){
+    const falta = Math.max(qtd - Math.max(disponivel,0), 1);
+    const categoria = tipo==='consumivel' ? 'Consumível' : (tipo==='alugavel' ? 'Material Alugável' : tipo==='balao' ? 'Balão' : 'Material Fixo');
+    addToListaCompras(nomeItem, falta, e.id, tipo, id, categoria, m.unidade||'unid');
+    toast('Item adicionado à Lista de Compra/Aluguer.','ok');
   }
   e.materiais.push({item_id:id, tipo, nome:nomeItem, unidade:m.unidade||'', qtdNecessaria:qtd, qtdDisponivel:Math.max(disponivel,0), qtdUtilizada:0, qtdEntregue:0, qtdDevolvida:0, qtdDanificada:0, qtdPerdida:0, entregue:false, montado:false, recolhido:false, conferido:false, consumoConfirmado:false, obs:obsItem});
+  pendingChecklistItem = null;
   saveDB(); syncChecklistToFolhaCusto(checklistEventoId); closeModal(); renderChecklistBody(); toast('Material adicionado ao checklist.','ok');
 }
 function syncChecklistToFolhaCusto(eventoId){
@@ -2601,7 +2700,14 @@ function syncChecklistToFolhaCusto(eventoId){
   if(!fac && ev.materiais.length===0) return;
   const catMap = {fixo:'Material Fixo', alugavel:'Material Alugável', consumivel:'Consumível', balao:'Balão'};
   const precoMap = {fixo:DB.materiaisFixos, alugavel:DB.alugaveis, consumivel:DB.consumiveis, balao:DB.baloes};
+  const itensAnteriores = fac? fac.itens : [];
   const itensSync = ev.materiais.map(m=>{
+    // Se este item já existia na Folha de Custo, preserva a quantidade e o preço
+    // eventualmente editados manualmente — a sincronização apenas adiciona/remove itens.
+    const preservado = itensAnteriores.find(i=>i.item_id===m.item_id && i.categoria===(catMap[m.tipo]||'Material Fixo'));
+    if(preservado){
+      return {item_id:m.item_id, nome:m.nome, categoria:catMap[m.tipo]||'Material Fixo', unidade:m.unidade||'unid', qtd:preservado.qtd, precoUnit:preservado.precoUnit};
+    }
     const src = precoMap[m.tipo]; const orig = src? src.find(x=>x.id===m.item_id) : null;
     const preco = orig? (m.tipo==='fixo'?orig.valor:m.tipo==='alugavel'?orig.precoDia:orig.precoCompra) : 0;
     return {item_id:m.item_id, nome:m.nome, categoria:catMap[m.tipo]||'Material Fixo', unidade:m.unidade||'unid', qtd:m.qtdNecessaria, precoUnit:preco};
@@ -2610,9 +2716,8 @@ function syncChecklistToFolhaCusto(eventoId){
     fac.itens = itensSync;
     fac.cliente_id = ev.cliente_id;
     fac.subtotal = itensSync.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
-    fac.valorFacturaProforma = fac.subtotal * (fac.multiplicador||2);
-    fac.valorRetencao = fac.retencaoAtiva? fac.valorFacturaProforma*fac.percentualRetencao/100 : 0;
-    fac.total = Math.max(fac.valorFacturaProforma - (fac.desconto||0) - fac.valorRetencao, 0);
+    // Multiplicador, valor da Factura Proforma, desconto e retenção mantêm-se exatamente
+    // como o utilizador os guardou da última vez — a sincronização nunca os substitui.
   } else {
     const subtotal = itensSync.reduce((s,i)=>s+i.qtd*i.precoUnit,0);
     const multiplicador = 2;
@@ -2668,20 +2773,54 @@ function openEditChecklistItem(idx){
     <div class="field"><label>Observações</label><textarea id="ckEditObs" rows="2">${escapeHtml(m.obs||'')}</textarea></div>
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveEditChecklistItem(${idx})">Guardar</button>`);
 }
+let pendingChecklistEdit = null;
 function saveEditChecklistItem(idx){
   const e = DB.eventos.find(x=>x.id===checklistEventoId);
   const m = e.materiais[idx];
-  m.qtdNecessaria = Number(document.getElementById('ckEditNec').value)||0;
-  m.qtdDisponivel = Number(document.getElementById('ckEditDisp').value)||0;
+  const novaQtdNecessaria = Number(document.getElementById('ckEditNec').value)||0;
+  const novoDisponivelRegisto = Number(document.getElementById('ckEditDisp').value)||0;
+  const camposExtra = {};
   if(m.tipo!=='consumivel'){
-    m.qtdEntregue = Number(document.getElementById('ckEditEnt').value)||0;
-    m.qtdDevolvida = Number(document.getElementById('ckEditDev').value)||0;
-    m.qtdDanificada = Number(document.getElementById('ckEditDan').value)||0;
-    m.qtdPerdida = Number(document.getElementById('ckEditPer').value)||0;
+    camposExtra.qtdEntregue = Number(document.getElementById('ckEditEnt').value)||0;
+    camposExtra.qtdDevolvida = Number(document.getElementById('ckEditDev').value)||0;
+    camposExtra.qtdDanificada = Number(document.getElementById('ckEditDan').value)||0;
+    camposExtra.qtdPerdida = Number(document.getElementById('ckEditPer').value)||0;
   } else if(!m.consumoConfirmado){
-    m.qtdUtilizada = Number(document.getElementById('ckEditUtil').value)||0;
+    camposExtra.qtdUtilizada = Number(document.getElementById('ckEditUtil').value)||0;
   }
-  m.obs = document.getElementById('ckEditObs').value.trim();
+  const novaObs = document.getElementById('ckEditObs').value.trim();
+
+  const disponivel = calcDisponibilidadeMaterial(m.item_id, m.tipo, e.id);
+  if(novaQtdNecessaria > disponivel){
+    const falta = novaQtdNecessaria - Math.max(disponivel,0);
+    pendingChecklistEdit = {idx, novaQtdNecessaria, novoDisponivelRegisto, camposExtra, novaObs, falta};
+    openModal('⚠️ Estoque insuficiente', `
+      <p style="font-size:13.5px">Estoque insuficiente para <b>${escapeHtml(m.nome)}</b>.</p>
+      <p style="font-size:13px;color:var(--text-mut)">Disponível: ${Math.max(disponivel,0)} · Necessário: ${novaQtdNecessaria}</p>
+      <p style="font-size:13px;margin-top:10px">Deseja adicionar ${falta} unidade(s) à Lista de Compra/Aluguer deste evento?</p>
+    `, `
+      <button class="btn" onclick="finalizarSaveEditChecklistItem(false)">Só atualizar o checklist</button>
+      <button class="btn btn-brand" onclick="finalizarSaveEditChecklistItem(true)">Sim, adicionar à Lista</button>
+    `);
+    return;
+  }
+  m.qtdNecessaria = novaQtdNecessaria; m.qtdDisponivel = novoDisponivelRegisto;
+  Object.assign(m, camposExtra); m.obs = novaObs;
+  saveDB(); syncChecklistToFolhaCusto(checklistEventoId); closeModal(); renderChecklistBody(); toast('Item atualizado.','ok');
+}
+function finalizarSaveEditChecklistItem(adicionarListaCompra){
+  if(!pendingChecklistEdit) return;
+  const {idx, novaQtdNecessaria, novoDisponivelRegisto, camposExtra, novaObs, falta} = pendingChecklistEdit;
+  const e = DB.eventos.find(x=>x.id===checklistEventoId);
+  const m = e.materiais[idx];
+  if(adicionarListaCompra){
+    const categoria = m.tipo==='consumivel' ? 'Consumível' : (m.tipo==='alugavel' ? 'Material Alugável' : m.tipo==='balao' ? 'Balão' : 'Material Fixo');
+    addToListaCompras(m.nome, falta, e.id, m.tipo, m.item_id, categoria, m.unidade||'unid');
+    toast('Item adicionado à Lista de Compra/Aluguer.','ok');
+  }
+  m.qtdNecessaria = novaQtdNecessaria; m.qtdDisponivel = novoDisponivelRegisto;
+  Object.assign(m, camposExtra); m.obs = novaObs;
+  pendingChecklistEdit = null;
   saveDB(); syncChecklistToFolhaCusto(checklistEventoId); closeModal(); renderChecklistBody(); toast('Item atualizado.','ok');
 }
 function removeChecklistItem(idx){
@@ -3002,7 +3141,8 @@ function saveFactura(){
       if(existing.status==='rascunho') existing.status='emitida';
     }
     editingFacturaId = null;
-    saveDB(); closeModal(); renderFacturasBody();
+    saveDB(); closeModal();
+    if(currentView==='facturas') renderFacturasBody();
     if(currentView==='checklist') renderChecklistBody();
     toast('Folha de Custo atualizada com sucesso.','ok');
     return;
@@ -3016,7 +3156,9 @@ function saveFactura(){
   };
   DB.config.proximoNumFactura++;
   DB.facturas.push(factura);
-  saveDB(); closeModal(); renderFacturasBody(); toast('Folha de Custo gerada com sucesso.','ok');
+  saveDB(); closeModal();
+  if(currentView==='facturas') renderFacturasBody();
+  toast('Folha de Custo gerada com sucesso.','ok');
 }
 function delFactura(id){
   if(!confirm('Remover esta folha de custo?')) return;
