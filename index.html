@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Yolandia Decorações</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -432,6 +433,9 @@ function loadLogoPng(){
 }
 
 // ============ CONSTANTS ============
+// ============ SUPABASE CONFIG ============
+const SUPABASE_URL = 'https://gguxqtloeqnxifufhyyk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_6llW4yEri_J0J5TGxJjM6A_RbYF_YF1';
 const STORAGE_KEY = 'yolandia_decoracoes_db_v2';
 const COLORS = {roxo:'#5B2A86', turquesa:'#17A9B0', rosa:'#EC1E79', amarelo:'#F7B500'};
 const EVENTO_STATUS = {
@@ -566,12 +570,48 @@ function seedData(){
   };
 }
 
-function loadDB(){
+async function loadFromSupabase(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
+      method:'GET',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json'
+      }
+    });
+    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
+    const rows = await response.json();
+    if(rows && rows.length){
+      const payload = rows[0].payload;
+      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
+    }
+  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
+  return false;
+}
+async function saveToSupabase(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+      method:'POST',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
+    });
+    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
+  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
+}
+async function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){ DB = JSON.parse(raw); }
     else{ DB = seedData(); saveDB(); }
     migrateDB();
+    const synced = await loadFromSupabase();
+    if(!synced && !raw){ saveDB(); }
   }catch(e){
     console.error('Erro ao carregar dados, a reiniciar.', e);
     DB = seedData(); saveDB();
@@ -707,6 +747,7 @@ function migrateDB(){
 function saveDB(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
   catch(e){ toast('Erro ao guardar dados localmente.', 'err'); }
+  saveToSupabase();
 }
 
 // ============ TOAST ============
@@ -3982,8 +4023,8 @@ function delUser(id){
 }
 
 // ============ INIT ============
-function init(){
-  loadDB();
+async function init(){
+  await loadDB();
   document.getElementById('yrNow').textContent = new Date().getFullYear();
   document.getElementById('loginLogo').src = LOGO_B64;
   document.getElementById('sideLogo').src = LOGO_B64;
@@ -3997,3 +4038,4 @@ init();
 </script>
 </body>
 </html>
+
