@@ -745,8 +745,14 @@ function migrateDB(){
   saveDB();
 }
 function saveDB(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
-  catch(e){ toast('Erro ao guardar dados localmente.', 'err'); }
+  try{
+    const data = JSON.stringify(DB);
+    if(data.length < 4500000){
+      localStorage.setItem(STORAGE_KEY, data);
+    } else {
+      console.warn('Dados excedem limite do localStorage, a usar apenas Supabase.');
+    }
+  }catch(e){ console.warn('localStorage indisponível, a usar Supabase.', e); }
   saveToSupabase();
 }
 
@@ -4038,4 +4044,6 @@ init();
 </script>
 </body>
 </html>
+
+
 
