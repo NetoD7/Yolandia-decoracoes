@@ -11,406 +11,113 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{
-  --roxo:#5B2A86;
-  --roxo-dark:#3E1C5E;
-  --turquesa:#17A9B0;
-  --rosa:#EC1E79;
-  --amarelo:#F7B500;
-  --bg:#F6F4FA;
-  --surface:#FFFFFF;
-  --surface-2:#F0EBF7;
-  --text:#241533;
-  --text-mut:#6B6178;
-  --border:#E4DEF0;
-  --radius-sm:10px;
-  --radius:14px;
-  --radius-lg:20px;
-  --shadow:0 4px 18px rgba(60,20,90,0.08);
-  --shadow-lg:0 16px 40px rgba(60,20,90,0.14);
-  --glass:rgba(255,255,255,0.72);
-  --ok:#1FA96A;
-  --warn:#F7B500;
-  --danger:#E3453A;
+  --roxo:#5B2A86; --roxo-dark:#3E1C5E; --turquesa:#17A9B0; --rosa:#EC1E79; --amarelo:#F7B500;
+  --bg:#F6F4FA; --surface:#FFFFFF; --surface-2:#F0EBF7; --text:#241533; --text-mut:#6B6178;
+  --border:#E4DEF0; --radius-sm:10px; --radius:14px; --radius-lg:20px;
+  --shadow:0 4px 18px rgba(60,20,90,0.08); --shadow-lg:0 16px 40px rgba(60,20,90,0.14);
+  --glass:rgba(255,255,255,0.72); --ok:#1FA96A; --warn:#F7B500; --danger:#E3453A;
   font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
 }
 [data-theme="dark"]{
-  --bg:#1B1123;
-  --surface:#251633;
-  --surface-2:#2E1C40;
-  --text:#F3EEFA;
-  --text-mut:#B6A9C7;
-  --border:#3B2751;
-  --shadow:0 4px 18px rgba(0,0,0,0.35);
-  --shadow-lg:0 16px 40px rgba(0,0,0,0.45);
+  --bg:#1B1123; --surface:#251633; --surface-2:#2E1C40; --text:#F3EEFA; --text-mut:#B6A9C7;
+  --border:#3B2751; --shadow:0 4px 18px rgba(0,0,0,0.35); --shadow-lg:0 16px 40px rgba(0,0,0,0.45);
   --glass:rgba(37,22,51,0.72);
 }
 *{box-sizing:border-box; margin:0; padding:0;}
-body{background:var(--bg); color:var(--text); transition:background .2s,color .2s; line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
-img{max-width:100%;}
-button{font-family:inherit; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, background-color .15s ease, border-color .15s ease, filter .15s ease;}
-button:active{transform:translateY(1px);}
-button:disabled{opacity:.5; cursor:not-allowed; transform:none;}
-input,select,textarea{font-family:inherit; transition:border-color .15s ease, box-shadow .15s ease;}
-:focus-visible{outline:2px solid var(--turquesa); outline-offset:2px; border-radius:4px;}
-::-webkit-scrollbar{width:8px; height:8px;}
-::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px;}
-::-webkit-scrollbar-thumb:hover{background:var(--roxo);}
-
+body{background:var(--bg); color:var(--text); transition:background .2s,color .2s; line-height:1.5; -webkit-font-smoothing:antialiased;}
 .hidden{display:none !important;}
-
-/* ---------- LOGIN ---------- */
-#loginScreen{
-  min-height:100vh; display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,var(--roxo) 0%, var(--roxo-dark) 55%, #1a0d30 100%);
-  padding:20px; position:relative; overflow:hidden;
-}
-#loginScreen::before, #loginScreen::after{
-  content:''; position:absolute; border-radius:50%; filter:blur(60px); opacity:.35; pointer-events:none;
-}
-#loginScreen::before{width:340px; height:340px; background:var(--turquesa); top:-80px; left:-80px;}
-#loginScreen::after{width:380px; height:380px; background:var(--rosa); bottom:-100px; right:-80px;}
-.login-card{
-  background:var(--surface); border-radius:var(--radius-lg); padding:44px 38px; width:100%; max-width:390px;
-  box-shadow:0 24px 70px rgba(0,0,0,0.4); text-align:center; position:relative; z-index:1;
-  border:1px solid rgba(255,255,255,0.08); animation:loginIn .4s cubic-bezier(.2,.8,.3,1);
-}
-@keyframes loginIn{from{opacity:0; transform:translateY(18px) scale(.97);} to{opacity:1; transform:translateY(0) scale(1);}}
-.login-card img.logo{width:140px; margin-bottom:4px;}
-.login-card h1{font-size:20px; color:var(--roxo); margin-bottom:2px;}
-.login-card p.tag{color:var(--text-mut); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:26px;}
+/* LOGIN */
+#loginScreen{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--roxo) 0%, var(--roxo-dark) 55%, #1a0d30 100%); padding:20px; position:relative; overflow:hidden; }
+.login-card{ background:var(--surface); border-radius:var(--radius-lg); padding:44px 38px; width:100%; max-width:390px; box-shadow:0 24px 70px rgba(0,0,0,0.4); text-align:center; z-index:1; position:relative; }
 .field{text-align:left; margin-bottom:14px;}
 .field label{display:block; font-size:12px; font-weight:600; color:var(--text-mut); margin-bottom:5px;}
-.field input, .field select, .field textarea{
-  width:100%; padding:11px 13px; border-radius:10px; border:1.5px solid var(--border);
-  background:var(--surface-2); color:var(--text); font-size:14px; outline:none;
-}
-.field input:focus, .field select:focus, .field textarea:focus{border-color:var(--turquesa); box-shadow:0 0 0 3px rgba(23,169,176,0.15);}
-.role-toggle{display:flex; gap:4px; margin-bottom:20px; background:var(--surface-2); padding:4px; border-radius:12px; border:1.5px solid var(--border);}
-.role-toggle button{
-  flex:1; padding:9px; border-radius:9px; border:none; background:transparent;
-  color:var(--text-mut); font-weight:600; font-size:13px;
-}
-.role-toggle button.active{background:var(--surface); color:var(--roxo); box-shadow:0 3px 10px rgba(60,20,90,0.14);}
-.btn-primary{
-  width:100%; padding:13px; border:none; border-radius:12px; font-weight:700; font-size:14px;
-  background:linear-gradient(135deg,var(--rosa),var(--roxo)); color:#fff; letter-spacing:.02em;
-  box-shadow:0 8px 20px rgba(91,42,134,0.35);
-}
-.btn-primary:hover{box-shadow:0 12px 28px rgba(91,42,134,0.45); transform:translateY(-1px);}
-.btn-primary:active{transform:scale(.98);}
-.login-hint{margin-top:16px; font-size:11px; color:var(--text-mut);}
-
-/* ---------- APP SHELL ---------- */
+.field input, .field select, .field textarea{ width:100%; padding:11px 13px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface-2); color:var(--text); font-size:14px; outline:none; }
+.btn-primary{ width:100%; padding:13px; border:none; border-radius:12px; font-weight:700; font-size:14px; background:linear-gradient(135deg,var(--rosa),var(--roxo)); color:#fff; cursor:pointer; }
+/* APP SHELL */
 #appShell{display:none; min-height:100vh;}
 #appShell.active{display:flex;}
-.sidebar{
-  width:240px; background:linear-gradient(180deg, var(--roxo-dark) 0%, #2c1449 100%); color:#fff; display:flex; flex-direction:column;
-  flex-shrink:0; height:100vh; position:sticky; top:0; overflow-y:auto; box-shadow:2px 0 24px rgba(0,0,0,0.18); z-index:30;
-}
-.sidebar-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,0.1);}
-.sidebar-brand img{width:44px; height:44px; object-fit:contain; filter:drop-shadow(0 4px 10px rgba(0,0,0,0.25));}
-.sidebar-brand .name{font-weight:800; font-size:15px; line-height:1.1; letter-spacing:.01em;}
-.sidebar-brand .sub{font-size:9px; color:#D9C6EE; text-transform:uppercase; letter-spacing:.1em;}
-.nav-list{list-style:none; padding:12px 10px; flex:1;}
-.nav-list li{margin-bottom:3px;}
-.nav-list button{
-  width:100%; text-align:left; background:none; border:none; color:#E4D6F3; padding:10px 12px;
-  border-radius:10px; font-size:13.5px; font-weight:500; display:flex; align-items:center; gap:10px;
-  transition:background-color .15s ease, color .15s ease, transform .15s ease, box-shadow .15s ease;
-}
-.nav-list button:hover{background:rgba(255,255,255,0.09); transform:translateX(3px);}
-.nav-list button.active{background:linear-gradient(135deg,var(--rosa),var(--turquesa)); color:#fff; font-weight:700; box-shadow:0 6px 16px rgba(236,30,121,0.32);}
-.nav-list .ic{font-size:16px; width:18px; text-align:center;}
-.sidebar-footer{padding:14px 18px; border-top:1px solid rgba(255,255,255,0.1); font-size:10.5px; color:#C7B4DD;}
-
+.sidebar{ width:240px; background:linear-gradient(180deg, var(--roxo-dark) 0%, #2c1449 100%); color:#fff; display:flex; flex-direction:column; height:100vh; position:sticky; top:0; z-index:30; }
 .main{flex:1; display:flex; flex-direction:column; min-width:0;}
-.topbar{
-  background:var(--glass); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--border); padding:14px 24px;
-  display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:20;
-}
-
-@media(max-width:900px){
-  #appShell.active{flex-direction:column;}
-  .sidebar{width:100%; height:auto; position:sticky; top:0; flex-direction:row; overflow-x:auto; overflow-y:hidden; box-shadow:0 2px 16px rgba(0,0,0,0.18);}
-  .sidebar-brand{border-bottom:none; border-right:1px solid rgba(255,255,255,0.1); flex-shrink:0;}
-  .sidebar-footer{display:none;}
-  .nav-list{display:flex; padding:8px; gap:4px; flex:none;}
-  .nav-list li{margin-bottom:0; flex-shrink:0;}
-  .nav-list button{flex-direction:column; gap:2px; font-size:10px; padding:8px 10px; white-space:nowrap;}
-  .nav-list button:hover{transform:translateY(-2px);}
-  .nav-list .ic{font-size:17px;}
-}
-.topbar h2{font-size:19px; color:var(--roxo); display:flex; align-items:center; gap:8px;}
-[data-theme="dark"] .topbar h2{color:#D9B8F0;}
-.topbar-actions{display:flex; align-items:center; gap:10px;}
-.icon-btn{
-  width:36px; height:36px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface-2);
-  display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--text);
-}
-.user-chip{display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:20px; background:var(--surface-2); font-size:12.5px; font-weight:600;}
-.user-chip .av{width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--rosa),var(--amarelo)); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:12px;}
-
+.topbar{ background:var(--glass); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:20; }
 .content{padding:22px 24px 60px; flex:1;}
-.footer-brand{text-align:center; padding:16px; font-size:11px; color:var(--text-mut); border-top:1px solid var(--border);}
-
-/* ---------- COMPONENTS ---------- */
-.grid{display:grid; gap:16px;}
-.grid-4{grid-template-columns:repeat(4,1fr);}
-.grid-3{grid-template-columns:repeat(3,1fr);}
-.grid-2{grid-template-columns:repeat(2,1fr);}
-@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-3{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:700px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr;}}
-
-.card{background:var(--surface); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid var(--border); transition:box-shadow .2s ease, transform .2s ease, border-color .2s ease;}
-.stat-card{position:relative; overflow:hidden; cursor:default;}
-.stat-card:hover{transform:translateY(-3px); box-shadow:0 12px 30px rgba(60,20,90,0.16); border-color:var(--turquesa);}
-.stat-card .stat-ic{width:40px; height:40px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:19px; margin-bottom:10px;}
-.stat-card .stat-val{font-size:26px; font-weight:800;}
-.stat-card .stat-lbl{font-size:12px; color:var(--text-mut); font-weight:600;}
-
-.btn{padding:9px 16px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface-2); color:var(--text); font-weight:600; font-size:13px; display:inline-flex; align-items:center; gap:6px;}
-.btn:hover{filter:brightness(0.97); border-color:var(--turquesa);}
-.btn-brand{background:linear-gradient(135deg,var(--rosa),var(--roxo)); color:#fff; border:none; box-shadow:0 6px 16px rgba(91,42,134,0.3);}
-.btn-brand:hover{box-shadow:0 10px 24px rgba(91,42,134,0.42); transform:translateY(-1px); filter:none; border-color:transparent;}
-.btn-turq{background:linear-gradient(135deg,var(--turquesa),#0E7B80); color:#fff; border:none;}
-.btn-turq:hover{box-shadow:0 10px 22px rgba(23,169,176,0.38); transform:translateY(-1px); filter:none; border-color:transparent;}
-.btn-sm{padding:6px 10px; font-size:12px; border-radius:8px;}
-.btn-danger{background:var(--danger); color:#fff; border:none;}
-.btn-danger:hover{box-shadow:0 8px 18px rgba(227,69,58,0.35); filter:none; border-color:transparent;}
-.btn-ghost{background:transparent; border:1.5px dashed var(--border);}
-.btn-ghost:hover{border-color:var(--roxo); background:var(--surface-2); border-style:dashed;}
-
-.toolbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;}
-.toolbar .search{flex:1; min-width:180px;}
-.search input{width:100%; padding:9px 14px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface-2); color:var(--text); font-size:13px;}
-.tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; background:var(--surface-2); padding:5px; border-radius:12px; border:1px solid var(--border); width:fit-content;}
-.tabs button{padding:8px 16px; border-radius:8px; border:none; background:transparent; font-size:12.5px; font-weight:600; color:var(--text-mut); transition:background-color .15s ease, color .15s ease, box-shadow .15s ease;}
-.tabs button.active{background:var(--surface); color:var(--roxo); box-shadow:0 3px 10px rgba(60,20,90,0.12);}
-
-table{width:100%; border-collapse:collapse; font-size:13px;}
-thead th{text-align:left; padding:12px; color:var(--text-mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; border-bottom:2px solid var(--border); background:var(--surface-2); position:sticky; top:0; z-index:1;}
-tbody td{padding:12px; border-bottom:1px solid var(--border);}
-tbody tr{transition:background-color .12s ease;}
-tbody tr:hover{background:var(--surface-2);}
+/* TABLES */
 .table-wrap{overflow-x:auto; background:var(--surface); border-radius:var(--radius-lg); border:1px solid var(--border); box-shadow:var(--shadow);}
-
-.badge{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:.01em;}
-.badge.ok{background:rgba(31,169,106,.14); color:var(--ok);}
-.badge.warn{background:rgba(247,181,0,.16); color:#946400;}
-.badge.danger{background:rgba(227,69,58,.14); color:var(--danger);}
-.badge.info{background:rgba(23,169,176,.15); color:#0C7278;}
-.badge.muted{background:var(--surface-2); color:var(--text-mut);}
-.badge.purple{background:rgba(91,42,134,.13); color:var(--roxo);}
-[data-theme="dark"] .badge.purple{color:#D9B8F0;}
-
-/* ---------- DASHBOARD (ENTERPRISE) ---------- */
-.dash-head{display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:24px;}
-.dash-eyebrow{font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--turquesa); margin-bottom:4px;}
-.dash-title{font-size:26px; font-weight:800; color:var(--text); letter-spacing:-.01em;}
-.dash-sub{font-size:13px; color:var(--text-mut); margin-top:2px; text-transform:capitalize;}
-.dash-head-actions{display:flex; gap:10px;}
-
-.dkpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px;}
-@media(max-width:1100px){.dkpi-grid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:600px){.dkpi-grid{grid-template-columns:1fr;}}
-.dkpi-card{
-  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px;
-  box-shadow:var(--shadow); transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-  opacity:0; animation:dkpiIn .45s ease forwards;
-}
-@keyframes dkpiIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
-.dkpi-card:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:var(--turquesa);}
-.dkpi-ic{width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:19px; margin-bottom:14px;}
-.dkpi-val{font-size:27px; font-weight:800; letter-spacing:-.01em; line-height:1.1;}
-.dkpi-lbl{font-size:12.5px; color:var(--text-mut); font-weight:600; margin-top:4px;}
-.dkpi-meta{font-size:11px; color:var(--text-mut); margin-top:10px; padding-top:10px; border-top:1px solid var(--border);}
-
-.dash-charts{display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-top:24px;}
-@media(max-width:900px){.dash-charts{grid-template-columns:1fr;}}
-.chart-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:22px;}
-.chart-card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:18px;}
-.chart-card-head h3{font-size:15px; font-weight:800; color:var(--text);}
-.chart-card-head p{font-size:12px; color:var(--text-mut); margin-top:2px;}
-
-.dash-section-title{font-size:15px; font-weight:800; color:var(--text); margin-bottom:14px; padding-left:2px;}
-
-.insight-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
-@media(max-width:900px){.insight-grid{grid-template-columns:1fr;}}
-.insight-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:18px; transition:box-shadow .2s ease, transform .2s ease;}
-.insight-card:hover{box-shadow:var(--shadow-lg); transform:translateY(-2px);}
-.insight-head{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
-.insight-ic{width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;}
-.insight-head h4{font-size:13.5px; font-weight:700; color:var(--text);}
-.insight-row{display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:12.5px;}
-.insight-row:last-child{border-bottom:none;}
-.insight-val{font-weight:700; color:var(--text-mut);}
-.insight-val.warn{color:var(--danger);}
-
-.thumb{width:40px; height:40px; border-radius:9px; object-fit:cover; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:16px;}
-
-.empty-state{text-align:center; padding:50px 20px; color:var(--text-mut);}
-.empty-state .em-ic{font-size:38px; margin-bottom:10px;}
-.empty-state .em-t{font-weight:700; color:var(--text); margin-bottom:4px;}
-
-/* Modal */
-.modal-overlay{
-  position:fixed; inset:0; background:rgba(20,10,30,0.55); display:none; align-items:center; justify-content:center;
-  z-index:100; padding:20px;
-}
-.modal-overlay.active{display:flex; animation:overlayIn .18s ease;}
-@keyframes overlayIn{from{background:rgba(20,10,30,0);} to{background:rgba(20,10,30,0.55);}}
-.modal{background:var(--surface); border-radius:18px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,0.4); animation:modalIn .22s cubic-bezier(.2,.8,.3,1);}
-@keyframes modalIn{from{opacity:0; transform:translateY(14px) scale(.97);} to{opacity:1; transform:translateY(0) scale(1);}}
-.modal.wide{max-width:860px;}
-.modal-head{display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:2;}
-.modal-head h3{font-size:16px;}
-.modal-close{width:30px; height:30px; border-radius:8px; border:none; background:var(--surface-2); font-size:16px;}
-.modal-body{padding:20px 22px;}
-.modal-foot{padding:16px 22px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; position:sticky; bottom:0; background:var(--surface);}
-.form-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
-@media(max-width:560px){.form-row{grid-template-columns:1fr;}}
-
-.toast-wrap{position:fixed; top:18px; right:18px; z-index:200; display:flex; flex-direction:column; gap:8px;}
-.toast{background:var(--surface); border-left:4px solid var(--turquesa); box-shadow:var(--shadow); border-radius:10px; padding:12px 16px; font-size:13px; min-width:220px; animation:slideIn .25s ease;}
-.toast.ok{border-color:var(--ok);}
-.toast.err{border-color:var(--danger);}
-@keyframes slideIn{from{transform:translateX(30px); opacity:0;} to{transform:translateX(0); opacity:1;}}
-
-/* calendar */
-.cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
-.cal-dow{text-align:center; font-size:11px; font-weight:700; color:var(--text-mut); padding-bottom:4px;}
-.cal-cell{min-height:86px; border-radius:10px; border:1px solid var(--border); padding:6px; background:var(--surface); font-size:11px; position:relative;}
-.cal-cell.other{opacity:.35;}
-.cal-cell.today{border:2px solid var(--turquesa);}
-.cal-daynum{font-weight:700; font-size:12px; margin-bottom:4px;}
-.cal-ev{border-radius:6px; padding:2px 6px; font-size:10px; margin-bottom:2px; color:#fff; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;}
-.legend{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px;}
-.legend .lg-item{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-mut); font-weight:600;}
-.legend .lg-dot{width:9px; height:9px; border-radius:50%;}
-
-.checklist-item{display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:var(--surface-2);}
-.chk-boxes{display:flex; gap:14px; flex-wrap:wrap;}
-.chk-boxes label{display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-mut); font-weight:600;}
-
-.progress-bar{height:6px; border-radius:6px; background:var(--surface-2); overflow:hidden; margin-top:6px;}
-.progress-bar span{display:block; height:100%; border-radius:6px;}
-
-@media print{
-  .sidebar,.topbar,.no-print{display:none !important;}
-  .content{padding:0;}
-  body{background:#fff;}
-}
+table{width:100%; border-collapse:collapse; font-size:13px;}
+thead th{text-align:left; padding:12px; color:var(--text-mut); background:var(--surface-2); border-bottom:2px solid var(--border);}
+tbody td{padding:12px; border-bottom:1px solid var(--border);}
+.badge{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:20px; font-size:11px; font-weight:700;}
+.modal-overlay{position:fixed; inset:0; background:rgba(20,10,30,0.55); display:none; align-items:center; justify-content:center; z-index:100; padding:20px;}
+.modal-overlay.active{display:flex;}
+.modal{background:var(--surface); border-radius:18px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; padding:22px;}
 </style>
 </head>
 <body>
 
 <div class="toast-wrap" id="toastWrap"></div>
 
-<!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-card">
-    <img class="logo" id="loginLogo" src="" alt="Yolandia Decorações">
-    <p class="tag">Criamos · Decoramos · Encantamos</p>
-    <div class="role-toggle">
-      <button type="button" class="active" data-role="admin" onclick="selectRole('admin')">Administrador</button>
-      <button type="button" data-role="funcionario" onclick="selectRole('funcionario')">Funcionário</button>
+    <img class="logo" id="loginLogo" src="" alt="Yolandia Decorações" style="width:140px">
+    <p class="tag" style="margin-bottom:20px">Sistema de Gestão Sincronizado</p>
+    <div class="role-toggle" style="display:flex; gap:5px; margin-bottom:20px">
+      <button onclick="selectRole('admin')" class="active" style="flex:1; padding:8px">Admin</button>
+      <button onclick="selectRole('funcionario')" style="flex:1; padding:8px">Funcionário</button>
     </div>
-    <div class="field">
-      <label>Utilizador ou Email</label>
-      <input id="loginUser" placeholder="ex: admin ou admin@email.com">
-    </div>
-    <div class="field">
-      <label>Senha</label>
-      <input id="loginPass" type="password" placeholder="••••••••">
-    </div>
+    <div class="field"><label>Utilizador</label><input id="loginUser" placeholder="admin"></div>
+    <div class="field"><label>Senha</label><input id="loginPass" type="password" placeholder="••••••••"></div>
     <button class="btn-primary" onclick="doLogin()">Entrar</button>
   </div>
 </div>
 
-<!-- APP -->
 <div id="appShell">
   <aside class="sidebar">
-    <div class="sidebar-brand">
-      <img id="sideLogo" src="" alt="logo">
-      <div>
-        <div class="name">Yolandia</div>
-        <div class="sub">Decorações</div>
-      </div>
+    <div class="sidebar-brand" style="padding:20px; border-bottom:1px solid rgba(255,255,255,0.1)">
+      <img id="sideLogo" src="" alt="logo" style="width:44px">
+      <div class="name" style="font-weight:800">Yolandia</div>
     </div>
-    <ul class="nav-list" id="navList"></ul>
-    <div class="sidebar-footer">
-      Yolandia Decorações © <span id="yrNow"></span><br>Sistema de Gestão v1.5
-    </div>
+    <ul class="nav-list" id="navList" style="list-style:none; padding:10px"></ul>
   </aside>
-
   <div class="main">
-    <div class="topbar no-print">
+    <div class="topbar">
       <h2 id="pageTitle">Dashboard</h2>
-      <div class="topbar-actions">
-        <button class="icon-btn" onclick="toggleTheme()" title="Alternar tema">🌗</button>
-        <button class="icon-btn" onclick="doLogout()" title="Sair">⎋</button>
-        <div class="user-chip"><span class="av" id="userAv">A</span><span id="userLbl">Admin</span></div>
-      </div>
+      <button onclick="doLogout()" style="padding:8px 15px; border-radius:8px; border:1px solid var(--border)">Sair</button>
     </div>
     <div class="content" id="content"></div>
-    <div class="footer-brand no-print">Yolandia Decorações — Sistema de Gestão Interno · Todos os direitos reservados</div>
   </div>
 </div>
 
-<!-- Generic Modal -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" id="modalBox">
-    <div class="modal-head">
-      <h3 id="modalTitle">Título</h3>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body" id="modalBody"></div>
-    <div class="modal-foot" id="modalFoot"></div>
+    <h3 id="modalTitle" style="margin-bottom:15px"></h3>
+    <div id="modalBody"></div>
+    <div id="modalFoot" style="margin-top:20px; text-align:right"></div>
   </div>
 </div>
 
 <script>
+// ============ CONFIGURAÇÃO SUPABASE ============
+const SUPABASE_URL = 'https://gguxqtloeqnxifufhyyk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_6llW4yEri_J0J5TGxJjM6A_RbYF_YF1';
+const STORAGE_KEY = 'yolandia_decoracoes_db_v2';
 
-// ============ LOGO (vector recreation, used in-app and on all exported/printed documents) ============
+// ============ LOGOTIPO SVG ============
 const LOGO_B64 = "data:image/svg+xml;utf8," + encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 430" width="400" height="430">
-  <circle cx="60" cy="90" r="5" fill="#5B2A86"/>
-  <circle cx="55" cy="150" r="4" fill="#F7B500"/>
-  <circle cx="345" cy="70" r="5" fill="#F7B500"/>
-  <circle cx="360" cy="180" r="5" fill="#17A9B0"/>
-  <circle cx="330" cy="230" r="4" fill="#F7B500"/>
+  <circle cx="60" cy="90" r="5" fill="#5B2A86"/><circle cx="55" cy="150" r="4" fill="#F7B500"/><circle cx="345" cy="70" r="5" fill="#F7B500"/><circle cx="360" cy="180" r="5" fill="#17A9B0"/><circle cx="330" cy="230" r="4" fill="#F7B500"/>
   <path d="M75 55 c-3-6-12-3-12 4 0 8 12 15 12 15s12-7 12-15c0-7-9-10-12-4z" fill="#EC1E79"/>
   <path d="M130 30 c-2-4-8-2-8 3 0 5 8 10 8 10s8-5 8-10c0-5-6-7-8-3z" fill="#F7B500"/>
   <path d="M345 120 c-2-4-8-2-8 3 0 5 8 10 8 10s8-5 8-10c0-5-6-7-8-3z" fill="#F7B500"/>
   <path d="M300 170 c-2-4-8-2-8 3 0 5 8 10 8 10s8-5 8-10c0-5-6-7-8-3z" fill="#EC1E79"/>
-  <g>
-    const SUPABASE_URL = 'https://gguxqtloeqnxifufhyyk.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_6llW4yEri_J0J5TGxJjM6A_RbYF_YF1';
-const STORAGE_KEY = 'yolandia_decoracoes_db_v2';
-  </g>
-  <g>
-    <ellipse cx="215" cy="90" rx="60" ry="72" fill="#EC1E79"/>
-    <path d="M195 40 q22-16 32 12" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/>
-    <path d="M215 160 q-4 16 4 24" stroke="#5B2A86" stroke-width="3" fill="none"/>
-  </g>
-  <g>
-    <ellipse cx="270" cy="135" rx="48" ry="58" fill="#F7B500"/>
-    <path d="M255 92 q16-12 24 8" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/>
-    <path d="M270 191 q-4 12 4 18" stroke="#5B2A86" stroke-width="3" fill="none"/>
-  </g>
+  <g><ellipse cx="150" cy="115" rx="55" ry="65" fill="#17A9B0"/><path d="M130 70 q20-15 30 10" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/><path d="M150 178 q-4 14 4 22" stroke="#5B2A86" stroke-width="3" fill="none"/></g>
+  <g><ellipse cx="215" cy="90" rx="60" ry="72" fill="#EC1E79"/><path d="M195 40 q22-16 32 12" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/><path d="M215 160 q-4 16 4 24" stroke="#5B2A86" stroke-width="3" fill="none"/></g>
+  <g><ellipse cx="270" cy="135" rx="48" ry="58" fill="#F7B500"/><path d="M255 92 q16-12 24 8" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/><path d="M270 191 q-4 12 4 18" stroke="#5B2A86" stroke-width="3" fill="none"/></g>
   <path d="M154 200 q10 20 30 10 q18 -10 30 8" stroke="#5B2A86" stroke-width="3" fill="none"/>
   <text x="200" y="300" text-anchor="middle" font-family="'Brush Script MT','Segoe Script',cursive" font-size="72" fill="#5B2A86" font-style="italic">Yolandia</text>
   <text x="200" y="335" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="4" fill="#17A9B0">DECORAÇÕES</text>
-  <line x1="120" y1="355" x2="175" y2="355" stroke="#8b8b8b" stroke-width="2"/>
-  <path d="M200 348 c-3-6-12-3-12 4 0 8 12 15 12 15s12-7 12-15c0-7-9-10-12-4z" fill="#EC1E79"/>
-  <line x1="225" y1="355" x2="280" y2="355" stroke="#8b8b8b" stroke-width="2"/>
   <text x="200" y="385" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="2" fill="#5B2A86">CRIAMOS · DECORAMOS · ENCANTAMOS</text>
 </svg>
 `);
 
-// Converts the vector logo (SVG) into a real rasterized PNG data URL at runtime,
-// since jsPDF/ExcelJS image embedding requires actual PNG/JPEG bytes, not SVG.
 let LOGO_PNG_CACHE = null;
 function loadLogoPng(){
   return new Promise((resolve)=>{
@@ -418,570 +125,80 @@ function loadLogoPng(){
     const img = new Image();
     img.onload = ()=>{
       try{
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width || 400;
-        canvas.height = img.height || 430;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 430;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
         LOGO_PNG_CACHE = canvas.toDataURL('image/png');
       }catch(e){ LOGO_PNG_CACHE = null; }
       resolve(LOGO_PNG_CACHE);
     };
-    img.onerror = ()=> resolve(null);
     img.src = LOGO_B64;
   });
 }
 
-// ============ CONSTANTS ============
 // ============ SUPABASE CONFIG ============
+const SUPABASE_URL = 'https://gguxqtloeqnxifufhyyk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_6llW4yEri_J0J5TGxJjM6A_RbYF_YF1';
+const STORAGE_KEY = 'yolandia_decoracoes_db_v2';
+
 async function loadFromSupabase(){
-  try{
+  try {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
-      method:'GET',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json'
-      }
+      method:'GET', headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type':'application/json' }
     });
-    if(!response.ok) throw new Error('Falha ao carregar');
     const rows = await response.json();
-    if(rows && rows.length){
-      const payload = rows[0].payload;
-      if(payload && typeof payload === 'object'){ 
-        DB = payload; 
-        migrateDB(); 
-        return true; 
-      }
-    }
-  }catch(e){ console.warn('Supabase offline, usando local.', e); }
+    if(rows && rows.length){ DB = rows[0].payload; migrateDB(); return true; }
+  } catch(e) { console.warn('Supabase offline.'); }
   return false;
 }
 
 async function saveToSupabase(){
-  try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates'
-      },
+      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
       body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
     });
-    if(response.ok) { console.log('Dados guardados no Supabase!'); }
-  }catch(e){ console.warn('Erro ao sincronizar nuvem.', e); }
+  } catch(e) { console.warn('Erro ao salvar nuvem.'); }
 }
 
 async function loadDB(){
-  try{
+  try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ DB = JSON.parse(raw); }
-    else{ DB = seedData(); }
-    
+    if(raw) DB = JSON.parse(raw); else DB = seedData();
     migrateDB();
-
-    // Tenta carregar da nuvem. Se conseguir, substitui os dados locais.
-    const synced = await loadFromSupabase();
-    if(!synced && !raw){ saveDB(); }
-  }catch(e){
-    console.error('Erro ao carregar banco, reiniciando.', e);
-    DB = seedData(); saveDB();
-  }
+    await loadFromSupabase();
+  } catch(e) { DB = seedData(); saveDB(); }
 }
 
 function saveDB(){
-  try{
-    const data = JSON.stringify(DB);
-    localStorage.setItem(STORAGE_KEY, data);
-  }catch(e){ console.warn('Local cheio.'); }
-  
-  saveToSupabase(); // Envia para o Supabase automaticamente
-}
-;
-// Catálogo de cores de balões: Cor Base -> Tom -> Cor Resultante (conforme tabela fornecida)
-const BALOES_CATALOGO = {
-  'Vermelho': {claro:'Vermelho claro / Salmão', escuro:'Vermelho escuro / Bordô', metalizado:'Vermelho metálico', vibrante:'Vermelho vivo', transparente:'Vermelho transparente'},
-  'Azul': {claro:'Azul bebê', escuro:'Azul marinho', metalizado:'Azul metálico', vibrante:'Azul royal', transparente:'Azul transparente'},
-  'Amarelo': {claro:'Amarelo claro', escuro:'Amarelo escuro / Mostarda', metalizado:'Amarelo dourado', vibrante:'Amarelo ouro', transparente:'Amarelo transparente'},
-  'Verde': {claro:'Verde menta', escuro:'Verde escuro / Bandeira', metalizado:'Verde metálico', vibrante:'Verde limão', transparente:'Verde transparente'},
-  'Rosa': {claro:'Rosa bebê', escuro:'Rosa escuro / Pink queimado', metalizado:'Rosa gold', vibrante:'Rosa choque', transparente:'Rosa transparente'},
-  'Roxo': {claro:'Lilás / Lavanda', escuro:'Roxo escuro', metalizado:'Roxo metálico', vibrante:'Violeta', transparente:'Roxo transparente'},
-  'Laranja': {claro:'Pêssego', escuro:'Laranja queimado', metalizado:'Laranja metálico', vibrante:'Laranja vivo', transparente:'Laranja transparente'},
-  'Marrom': {claro:'Bege / Nude', escuro:'Marrom café', metalizado:'Bronze', vibrante:'Caramelo', transparente:'Marrom transparente'},
-  'Cinza': {claro:'Cinza claro', escuro:'Cinza chumbo / Grafite', metalizado:'Prata / Cromado', vibrante:'', transparente:'Cinza fumê'},
-  'Branco/Preto': {claro:'Branco', escuro:'Preto', metalizado:'Dourado / Prata', vibrante:'', transparente:'Cristal (incolor)'},
-  'Turquesa': {claro:'Verde água', escuro:'Azul petróleo', metalizado:'Turquesa metálico', vibrante:'Ciano', transparente:'Turquesa transparente'}
-};
-const BALAO_TONS = [
-  {key:'claro', label:'Tom Claro'},
-  {key:'escuro', label:'Tom Escuro'},
-  {key:'metalizado', label:'Metalizado'},
-  {key:'vibrante', label:'Vibrante'},
-  {key:'transparente', label:'Transparente'}
-];
-const MENU = [
-  {id:'dashboard', label:'Dashboard', ic:'📊'},
-  {id:'agenda', label:'Agenda', ic:'📅'},
-  {id:'estoque', label:'Estoque', ic:'📦'},
-  {id:'listacompras', label:'Lista de Compras', ic:'🛒'},
-  {id:'fornecedores', label:'Fornecedores', ic:'🚚'},
-  {id:'eventos', label:'Eventos', ic:'🎉'},
-  {id:'checklist', label:'Check List', ic:'✅'},
-  {id:'clientes', label:'Clientes', ic:'👥'},
-  {id:'facturas', label:'Folha de Custo', ic:'🧾'},
-  {id:'financeiro', label:'Financeiro', ic:'💰'},
-  {id:'danos', label:'Danos e Perdas', ic:'⚠️'},
-  {id:'relatorios', label:'Relatórios', ic:'📈'},
-  {id:'config', label:'Configurações', ic:'⚙️'},
-];
-
-// ============ STATE / STORAGE ============
-let DB = null;
-let currentView = 'dashboard';
-let calCursor = new Date();
-let calMode = 'mes';
-
-function uid(prefix){ return (prefix||'id')+'_'+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
-function fmtMoney(v){
-  v = Number(v)||0;
-  return v.toLocaleString('pt-PT',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + (DB.config.moeda||'AOA');
-}
-function fmtDate(d){ if(!d) return '-'; const p=d.split('-'); return p.length===3? `${p[2]}/${p[1]}/${p[0]}` : d; }
-function escapeHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function currentUserName(){ return (DB.users.find(u=>u.id===DB.currentUser)||{}).nome || 'Sistema'; }
-
-// Simulated password hashing (client-side demo — for a real backend use bcrypt/argon2 server-side)
-function simpleHash(str){
-  str = String(str||'');
-  let hash = 5381;
-  for(let i=0;i<str.length;i++){ hash = ((hash<<5)+hash) + str.charCodeAt(i); hash = hash & hash; }
-  return 'h'+Math.abs(hash).toString(36)+str.length;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch(e){}
+  saveToSupabase();
 }
 
-function seedData(){
-  return {
-    config:{
-      empresa:{nome:'Yolandia Decorações', telefone:'+244 9XX XXX XXX', email:'geral@yolandiadecoracoes.ao', nif:'5000000000', endereco:'Talatona, Luanda, Angola'},
-      retencaoFonte:{ativo:true, percentual:6.5},
-      moeda:'AOA', tema:'light', proximoNumFactura: 1, proximoNumListaCompras: 1,
-      iban:'AO06 0040 0000 8903 9518 1024 0',
-      destinatario:'YOLANDIA COMERCIO PRESTACAO SERVICO LDA'
-    },
-    users:[
-      {id:'u1', nome:'Administrador', user:'admin', email:'admin@yolandiadecoracoes.ao', senhaHash: simpleHash('admin'), tipo:'admin', ativo:true},
-      {id:'u2', nome:'Funcionário Exemplo', user:'funcionario', email:'funcionario@yolandiadecoracoes.ao', senhaHash: simpleHash('1234'), tipo:'funcionario', ativo:true}
-    ],
-    currentUser:null,
-    clientes:[
-      {id:'c1', nome:'Ana Paula Ferreira', telefone:'923 111 222', email:'ana@mail.com', morada:'Talatona, Luanda', nif:'', empresa:'', obs:''},
-      {id:'c2', nome:'Empresa Kianda Eventos', telefone:'924 555 666', email:'kianda@mail.com', morada:'Viana, Luanda', nif:'5401234567', empresa:'Kianda Eventos Lda', obs:'Cliente frequente'}
-    ],
-    fornecedores:[
-      {id:'fr1', nome:'Fornecedor Local', empresa:'', nif:'', telefone:'', email:'', endereco:'', contacto:'', obs:''}
-    ],
-    materiaisFixos:[
-      {id:'mf1', codigo:'MF-0001', nome:'Máquina 4 saídas', categoria:'Máquinas', foto:'', estado:'disponivel', quantidade:3, obs:'', dataCompra:'2023-02-10', valor:120000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf2', codigo:'MF-0002', nome:'Máquina duas saídas preta', categoria:'Máquinas', foto:'', estado:'disponivel', quantidade:1, obs:'', dataCompra:'2023-02-10', valor:80000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf3', codigo:'MF-0003', nome:'Máquina rosa', categoria:'Máquinas', foto:'', estado:'disponivel', quantidade:7, obs:'', dataCompra:'2023-05-01', valor:75000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf4', codigo:'MF-0004', nome:'Tesoura', categoria:'Ferramentas', foto:'', estado:'disponivel', quantidade:10, obs:'', dataCompra:'2022-11-20', valor:1500, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf5', codigo:'MF-0005', nome:'Agrafador vermelho', categoria:'Ferramentas', foto:'', estado:'disponivel', quantidade:2, obs:'', dataCompra:'2022-11-20', valor:3500, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf6', codigo:'MF-0006', nome:'Agrafador grande', categoria:'Ferramentas', foto:'', estado:'disponivel', quantidade:1, obs:'', dataCompra:'2022-11-20', valor:5000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf7', codigo:'MF-0007', nome:'Base de balões', categoria:'Estruturas', foto:'', estado:'disponivel', quantidade:4, obs:'', dataCompra:'2023-01-15', valor:9000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf8', codigo:'MF-0008', nome:'Escadas', categoria:'Estruturas', foto:'', estado:'disponivel', quantidade:2, obs:'', dataCompra:'2022-08-05', valor:35000, tipoAquisicao:'compra', fornecedor_id:'fr1', historico:[]},
-      {id:'mf9', codigo:'MF-0009', nome:'Andaime', categoria:'Estruturas', foto:'', estado:'disponivel', quantidade:2, obs:'', dataCompra:'2022-08-05', valor:60000, tipoAquisicao:'aluguer', fornecedor_id:'', historico:[]}
-    ],
-    consumiveis:[
-      {id:'cs1', nome:'Balão Branco', tipo:'balao', cor:'Branco', tamanho:'10"', quantidade:500, unidade:'unid', precoCompra:15, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:100, foto:'', historico:[]},
-      {id:'cs2', nome:'Balão Vermelho', tipo:'balao', cor:'Vermelho', tamanho:'12"', quantidade:80, unidade:'unid', precoCompra:18, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:100, foto:'', historico:[]},
-      {id:'cs3', nome:'Balão Azul Bebê', tipo:'balao', cor:'Azul Bebê', tamanho:'18"', quantidade:200, unidade:'unid', precoCompra:35, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:50, foto:'', historico:[]},
-      {id:'cs4', nome:'Balão Amarelo', tipo:'balao', cor:'Amarelo', tamanho:'10"', quantidade:300, unidade:'unid', precoCompra:15, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:100, foto:'', historico:[]},
-      {id:'cs5', nome:'Babool', tipo:'outro', cor:'', tamanho:'', quantidade:15, unidade:'kg', precoCompra:2500, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:5, foto:'', historico:[]},
-      {id:'cs6', nome:'Grampos', tipo:'outro', cor:'', tamanho:'', quantidade:40, unidade:'cx', precoCompra:800, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:5, foto:'', historico:[]},
-      {id:'cs7', nome:'Elásticos', tipo:'outro', cor:'', tamanho:'', quantidade:30, unidade:'pct', precoCompra:600, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:5, foto:'', historico:[]},
-      {id:'cs8', nome:'Fio de Nylon', tipo:'outro', cor:'', tamanho:'', quantidade:20, unidade:'rolo', precoCompra:1200, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:5, foto:'', historico:[]},
-      {id:'cs9', nome:'Spray de Brilho', tipo:'outro', cor:'', tamanho:'', quantidade:8, unidade:'unid', precoCompra:4500, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:3, foto:'', historico:[]},
-      {id:'cs10', nome:'Cola', tipo:'outro', cor:'', tamanho:'', quantidade:12, unidade:'unid', precoCompra:900, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:4, foto:'', historico:[]},
-      {id:'cs11', nome:'Fita Adesiva', tipo:'outro', cor:'', tamanho:'', quantidade:25, unidade:'rolo', precoCompra:500, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:6, foto:'', historico:[]},
-      {id:'cs12', nome:'Fita Dupla Face', tipo:'outro', cor:'', tamanho:'', quantidade:18, unidade:'rolo', precoCompra:700, fornecedor_id:'fr1', tipoAquisicao:'compra', estoqueMinimo:5, foto:'', historico:[]}
-    ],
-    alugaveis:[
-      {id:'al1', codigo:'AL-0001', nome:'Mesa Redonda', modelo:'Standard', cor:'Branco', quantidade:40, precoUnidade:5000, precoDia:5000, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:'', historico:[]},
-      {id:'al2', codigo:'AL-0002', nome:'Cadeira Tiffany', modelo:'Tiffany', cor:'Dourado', quantidade:150, precoUnidade:2500, precoDia:2500, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:'', historico:[]},
-      {id:'al3', codigo:'AL-0003', nome:'Arco de Balões', modelo:'Orgânico', cor:'Multicolor', quantidade:6, precoUnidade:25000, precoDia:25000, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:'', historico:[]},
-      {id:'al4', codigo:'AL-0004', nome:'Painel de Fundo', modelo:'Vinil', cor:'Personalizado', quantidade:4, precoUnidade:35000, precoDia:35000, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:'', historico:[]},
-      {id:'al5', codigo:'AL-0005', nome:'Toalha de Mesa', modelo:'Cetim', cor:'Branco', quantidade:40, precoUnidade:2000, precoDia:2000, estado:'disponivel', foto:'', tipoAquisicao:'compra', fornecedor_id:'', historico:[]}
-    ],
-    eventos:[],
-    alugueres:[],
-    facturas:[],
-    despesas:[],
-    adiantamentos:[],
-    ocorrencias:[],
-    listaCompras:[],
-    consumoConsumiveis:[]
-  };
-}
-
-async function loadFromSupabase(){
-  try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main`, {
-      method:'GET',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json'
-      }
-    });
-    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
-    const rows = await response.json();
-    if(rows && rows.length){
-      const payload = rows[0].payload;
-      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
-    }
-  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
-  return false;
-}
-async function saveToSupabase(){
-  try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
-      method:'POST',
-      headers:{
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
-    });
-    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
-  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
-}
-async function loadDB(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ DB = JSON.parse(raw); }
-    else{ DB = seedData(); saveDB(); }
-    migrateDB();
-    const synced = await loadFromSupabase();
-    if(!synced && !raw){ saveDB(); }
-  }catch(e){
-    console.error('Erro ao carregar dados, a reiniciar.', e);
-    DB = seedData(); saveDB();
-  }
-}
 function findOrCreateFornecedorByName(nome){
   if(!nome) return '';
   const existing = DB.fornecedores.find(f=>f.nome.toLowerCase()===nome.toLowerCase());
   if(existing) return existing.id;
   const f = {id:uid('fr'), nome, empresa:'', nif:'', telefone:'', email:'', endereco:'', contacto:'', obs:''};
-  DB.fornecedores.push(f);
-  return f.id;
+  DB.fornecedores.push(f); return f.id;
 }
+
 function migrateDB(){
-  if(!DB.despesas) DB.despesas=[];
-  if(!DB.adiantamentos) DB.adiantamentos=[];
-  if(!DB.ocorrencias) DB.ocorrencias=[];
-  if(!DB.listaCompras) DB.listaCompras=[];
-  if(!DB.listasCompras) DB.listasCompras=[];
-  if(!DB.baloes) DB.baloes=[];
-  if(!DB.fornecedores) DB.fornecedores=[];
-  if(!DB.consumoConsumiveis) DB.consumoConsumiveis=[];
-  if(!DB.config) DB.config={};
-  if(!DB.config.empresa) DB.config.empresa={nome:'Yolandia Decorações', telefone:'', email:'', nif:'', endereco:''};
-  if(!DB.config.retencaoFonte) DB.config.retencaoFonte = {ativo:true, percentual:6.5};
-  if(DB.config.iva !== undefined) delete DB.config.iva;
-  if(!DB.config.moeda) DB.config.moeda='AOA';
-  if(!DB.config.tema) DB.config.tema='light';
-  if(!DB.config.proximoNumFactura) DB.config.proximoNumFactura=1;
-  if(!DB.config.proximoNumListaCompras) DB.config.proximoNumListaCompras=1;
-  if(!DB.config.iban) DB.config.iban = 'AO06 0040 0000 8903 9518 1024 0';
-  if(!DB.config.destinatario) DB.config.destinatario = 'YOLANDIA COMERCIO PRESTACAO SERVICO LDA';
-
-  ['materiaisFixos','consumiveis','alugaveis','baloes'].forEach(key=>{
-    (DB[key]||[]).forEach(m=>{
-      if(!m.historico) m.historico=[];
-      if(!m.tipoAquisicao) m.tipoAquisicao='compra';
-      if(m.foto===undefined) m.foto='';
-      if(m.fornecedor_id===undefined){
-        const legacyNome = (m.fornecedor && m.fornecedor.nome) || '';
-        m.fornecedor_id = legacyNome? findOrCreateFornecedorByName(legacyNome) : '';
-      }
-    });
-  });
-  (DB.baloes||[]).forEach(b=>{
-    if(b.unidade===undefined) b.unidade='Unidade';
-    if(b.estoqueMinimo===undefined) b.estoqueMinimo=20;
-    if(b.tamanhoCustom===undefined) b.tamanhoCustom='';
-    if(!b.corResultado && BALOES_CATALOGO[b.corBase]) b.corResultado = BALOES_CATALOGO[b.corBase][b.tom] || b.corBase;
-  });
-  (DB.users||[]).forEach(u=>{
-    if(u.senha && !u.senhaHash){ u.senhaHash = simpleHash(u.senha); delete u.senha; }
-    if(!u.senhaHash) u.senhaHash = simpleHash('1234');
-    if(u.ativo===undefined) u.ativo=true;
-    if(u.email===undefined) u.email='';
-  });
-  (DB.facturas||[]).forEach(f=>{
-    if(f.iva!==undefined) delete f.iva;
-    if(f.retencaoAtiva===undefined) f.retencaoAtiva=false;
-    if(f.percentualRetencao===undefined) f.percentualRetencao = DB.config.retencaoFonte.percentual;
-    if(f.valorRetencao===undefined) f.valorRetencao = 0;
-    if(f.subtotal===undefined) f.subtotal = (f.itens||[]).reduce((s,i)=>s+i.qtd*i.precoUnit,0);
-    if(f.multiplicador===undefined) f.multiplicador = 2;
-    if(f.valorFacturaProforma===undefined) f.valorFacturaProforma = (f.total!==undefined? f.total : f.subtotal);
-    if(f.evento_id===undefined) f.evento_id='';
-    if(!f.status) f.status='emitida';
-    (f.itens||[]).forEach(i=>{ if(i.categoria===undefined) i.categoria='Material Fixo'; if(i.unidade===undefined) i.unidade='unid'; });
-  });
-  (DB.alugueres||[]).forEach(a=>{
-    if(a.fornecedor_id===undefined){ a.fornecedor_id = a.cliente_id || ''; }
-  });
-  (DB.listaCompras||[]).forEach(l=>{
-    if(l.categoria===undefined) l.categoria='Material Fixo';
-    if(l.unidade===undefined) l.unidade='unid';
-    if(l.valorUnitario===undefined) l.valorUnitario=0;
-    if(l.fornecedor_id===undefined) l.fornecedor_id='';
-    if(l.tipoAquisicao===undefined) l.tipoAquisicao='compra';
-    if(l.responsavel===undefined) l.responsavel='';
-    if(l.obs===undefined) l.obs='';
-    if(l.item_id===undefined) l.item_id=null;
-    if(l.tipoItem===undefined) l.tipoItem=null;
-    if(l.lista_id===undefined) l.lista_id=null;
-    if(!['pendente','comprado','alugado','recebido','cancelado'].includes(l.status)) l.status='pendente';
-  });
-  const itensOrfaosListaCompras = DB.listaCompras.filter(l=>!l.lista_id);
-  if(itensOrfaosListaCompras.length){
-    if(!DB.listasCompras.length) DB.listasCompras.push({id:uid('lst'), nome:'Lista de Compra 1', criadoEm:new Date().toISOString(), responsavel:''});
-    const listaMigracaoId = DB.listasCompras[0].id;
-    itensOrfaosListaCompras.forEach(l=>{ l.lista_id = listaMigracaoId; });
-  }
-  // Listas de Compra passam a ser sempre sincronizadas automaticamente com os eventos
-  DB.listasCompras.forEach(l=>{ if(l.evento_id===undefined) l.evento_id=null; });
-  const listasGenericasSemEvento = DB.listasCompras.filter(l=>!l.evento_id);
-  if(listasGenericasSemEvento.length>1){
-    const principal = listasGenericasSemEvento[0];
-    principal.nome = 'Compras Gerais';
-    const idsRemover = listasGenericasSemEvento.slice(1).map(l=>l.id);
-    DB.listaCompras.forEach(item=>{ if(idsRemover.includes(item.lista_id)) item.lista_id = principal.id; });
-    DB.listasCompras = DB.listasCompras.filter(l=> l.evento_id || l.id===principal.id);
-  } else if(listasGenericasSemEvento.length===1){
-    listasGenericasSemEvento[0].nome = 'Compras Gerais';
-  } else {
-    DB.listasCompras.push({id:uid('lst'), nome:'Compras Gerais', criadoEm:new Date().toISOString(), responsavel:'', evento_id:null});
-  }
-  DB.eventos.forEach(ev=>{
-    const nomeEsperado = `${ev.nome_evento} — ${fmtDate(ev.data)}`;
-    let lst = DB.listasCompras.find(l=>l.evento_id===ev.id);
-    if(!lst){ DB.listasCompras.push({id:uid('lst'), nome:nomeEsperado, criadoEm:new Date().toISOString(), responsavel:'', evento_id:ev.id}); }
-    else if(lst.nome !== nomeEsperado){ lst.nome = nomeEsperado; }
-  });
-  const listaGeralIdMigracao = (DB.listasCompras.find(l=>!l.evento_id)||{}).id;
-  DB.listaCompras.forEach(item=>{
-    if(!item.lista_id || !DB.listasCompras.find(l=>l.id===item.lista_id)){
-      if(item.evento_id){
-        const lstEv = DB.listasCompras.find(l=>l.evento_id===item.evento_id);
-        item.lista_id = lstEv? lstEv.id : listaGeralIdMigracao;
-      } else {
-        item.lista_id = listaGeralIdMigracao;
-      }
-    }
-  });
-  (DB.eventos||[]).forEach(ev=>{
-    (ev.materiais||[]).forEach(m=>{
-      if(m.qtdDisponivel===undefined) m.qtdDisponivel=0;
-      if(m.qtdUtilizada===undefined) m.qtdUtilizada=0;
-      if(m.consumoConfirmado===undefined) m.consumoConfirmado=false;
-      if(m.obs===undefined) m.obs='';
-      if(m.unidade===undefined) m.unidade='';
-    });
-  });
-  saveDB();
-}
-function saveDB(){
-  try{
-    const data = JSON.stringify(DB);
-    if(data.length < 4500000){
-      localStorage.setItem(STORAGE_KEY, data);
-    } else {
-      console.warn('Dados excedem limite do localStorage, a usar apenas Supabase.');
-    }
-  }catch(e){ console.warn('localStorage indisponível, a usar Supabase.', e); }
-  saveToSupabase();
+  if(!DB.despesas) DB.despesas=[]; if(!DB.adiantamentos) DB.adiantamentos=[]; if(!DB.ocorrencias) DB.ocorrencias=[];
+  if(!DB.listaCompras) DB.listaCompras=[]; if(!DB.listasCompras) DB.listasCompras=[]; if(!DB.baloes) DB.baloes=[];
+  if(!DB.fornecedores) DB.fornecedores=[]; if(!DB.consumoConsumiveis) DB.consumoConsumiveis=[];
+  if(!DB.config) DB.config={}; if(!DB.config.empresa) DB.config.empresa={nome:'Yolandia Decorações', telefone:'', email:'', nif:'', endereco:''};
+  if(!DB.config.moeda) DB.config.moeda='AOA'; if(!DB.config.tema) DB.config.tema='light';
 }
 
-// ============ TOAST ============
-function toast(msg, type){
-  const wrap = document.getElementById('toastWrap');
-  const t = document.createElement('div');
-  t.className = 'toast '+(type||'');
-  t.textContent = msg;
-  wrap.appendChild(t);
-  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3200);
-}
+const COLORS = {roxo:'#5B2A86', turquesa:'#17A9B0', rosa:'#EC1E79', amarelo:'#F7B500'};
+const BALAO_TONS = [{key:'claro', label:'Tom Claro'}, {key:'escuro', label:'Tom Escuro'}, {key:'metalizado', label:'Metalizado'}, {key:'vibrante', label:'Vibrante'}, {key:'transparente', label:'Transparente'}];
 
-// ============ AUTH ============
-let selectedRole = 'admin';
-function selectRole(role){
-  selectedRole = role;
-  document.querySelectorAll('.role-toggle button').forEach(b=>b.classList.toggle('active', b.dataset.role===role));
-}
-function doLogin(){
-  const identifier = document.getElementById('loginUser').value.trim();
-  const pass = document.getElementById('loginPass').value;
-  if(!identifier || !pass){ toast('Preencha o utilizador e a senha.', 'err'); return; }
-  const found = DB.users.find(u =>
-    (u.user && u.user.toLowerCase()===identifier.toLowerCase()) ||
-    (u.email && u.email.toLowerCase()===identifier.toLowerCase())
-  );
-  if(!found || found.tipo!==selectedRole){ toast('Utilizador não encontrado.', 'err'); return; }
-  if(found.ativo===false){ toast('Conta inativa. Contacte o administrador.', 'err'); return; }
-  if(found.senhaHash !== simpleHash(pass)){ toast('Senha incorreta.', 'err'); return; }
-  DB.currentUser = found.id;
-  saveDB();
-  enterApp();
-}
-function doLogout(){
-  DB.currentUser = null;
-  saveDB();
-  document.getElementById('appShell').classList.remove('active');
-  document.getElementById('loginScreen').style.display='flex';
-}
-function enterApp(){
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('appShell').classList.add('active');
-  const u = DB.users.find(x=>x.id===DB.currentUser);
-  document.getElementById('userLbl').textContent = u ? u.nome : 'Utilizador';
-  document.getElementById('userAv').textContent = u ? u.nome.charAt(0).toUpperCase() : 'U';
-  applyTheme();
-  buildNav();
-  navigate('dashboard');
-}
-function toggleTheme(){
-  DB.config.tema = DB.config.tema==='dark' ? 'light' : 'dark';
-  saveDB();
-  applyTheme();
-}
-function applyTheme(){
-  document.documentElement.setAttribute('data-theme', DB.config.tema==='dark' ? 'dark':'light');
-}
-
-// ============ NAV ============
-function buildNav(){
-  const nav = document.getElementById('navList');
-  nav.innerHTML = MENU.map(m=>`<li><button data-nav="${m.id}" onclick="navigate('${m.id}')"><span class="ic">${m.ic}</span>${m.label}</button></li>`).join('');
-}
-function navigate(view){
-  currentView = view;
-  document.querySelectorAll('#navList button').forEach(b=>b.classList.toggle('active', b.dataset.nav===view));
-  const m = MENU.find(x=>x.id===view);
-  document.getElementById('pageTitle').innerHTML = `<span>${m?m.ic:''}</span> ${m?m.label:''}`;
-  const c = document.getElementById('content');
-  c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-mut)">A carregar...</div>';
-  setTimeout(()=>{
-    try{
-      RENDERERS[view]();
-    }catch(e){
-      console.error(e);
-      c.innerHTML = '<div class="empty-state"><div class="em-ic">⚠️</div><div class="em-t">Erro ao carregar módulo</div></div>';
-    }
-  }, 10);
-}
-
-// ============ MODAL HELPERS ============
-function openModal(title, bodyHtml, footHtml, wide){
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalBody').innerHTML = bodyHtml;
-  document.getElementById('modalFoot').innerHTML = footHtml || '';
-  document.getElementById('modalBox').classList.toggle('wide', !!wide);
-  document.getElementById('modalOverlay').classList.add('active');
-}
-function closeModal(){
-  document.getElementById('modalOverlay').classList.remove('active');
-}
-document.addEventListener('click', function(e){
-  if(e.target.id==='modalOverlay') closeModal();
-});
-
-// ============ FORNECEDOR HELPERS (used across Estoque, Lista de Compras) ============
-function fornecedorNome(id){
-  if(!id) return '-';
-  const f = DB.fornecedores.find(x=>x.id===id);
-  return f? f.nome : '-';
-}
-function renderFornecedorSelectOptions(selectedId){
-  return `<option value="">- Sem fornecedor -</option>` +
-    DB.fornecedores.map(f=>`<option value="${f.id}" ${selectedId===f.id?'selected':''}>${escapeHtml(f.nome)}${f.empresa?' — '+escapeHtml(f.empresa):''}</option>`).join('') +
-    `<option value="__novo__">+ Novo fornecedor...</option>`;
-}
-function fornecedorPickerHtml(prefix, selectedId){
-  return `
-    <div class="field"><label>Fornecedor</label>
-      <select id="${prefix}FornecedorSel" onchange="toggleNovoFornecedor('${prefix}')">${renderFornecedorSelectOptions(selectedId)}</select>
-    </div>
-    <div id="${prefix}NovoFornecedorBox" style="display:none;margin:-6px 0 12px">
-      <div class="form-row">
-        <div class="field"><label>Nome do novo fornecedor</label><input id="${prefix}FornecedorNovoNome"></div>
-        <div class="field"><label>Telefone</label><input id="${prefix}FornecedorNovoTel"></div>
-      </div>
-    </div>
-  `;
-}
-function toggleNovoFornecedor(prefix){
-  const sel = document.getElementById(prefix+'FornecedorSel');
-  document.getElementById(prefix+'NovoFornecedorBox').style.display = sel.value==='__novo__' ? 'block':'none';
-}
-function resolveFornecedorFromForm(prefix){
-  const sel = document.getElementById(prefix+'FornecedorSel');
-  if(!sel) return '';
-  if(sel.value==='__novo__'){
-    const nomeEl = document.getElementById(prefix+'FornecedorNovoNome');
-    const nome = nomeEl? nomeEl.value.trim() : '';
-    if(!nome) return '';
-    const tel = document.getElementById(prefix+'FornecedorNovoTel').value.trim();
-    return criarFornecedorRapido(nome, tel);
-  }
-  return sel.value;
-}
-function criarFornecedorRapido(nome, telefone, empresa){
-  const f = {id:uid('fr'), nome, empresa:empresa||'', nif:'', telefone:telefone||'', email:'', endereco:'', contacto:'', obs:''};
-  DB.fornecedores.push(f);
-  return f.id;
-}
-function fileToBase64(input, cb){
-  const f = input.files[0]; if(!f) return;
-  const reader = new FileReader();
-  reader.onload = e=>cb(e.target.result);
-  reader.readAsDataURL(f);
-}
-function detectImgFormat(dataUrl){
-  if(!dataUrl) return null;
-  const match = dataUrl.match(/^data:image\/(\w+);base64,/);
-  if(!match) return null;
-  const ext = match[1].toLowerCase();
-  if(ext==='jpeg'||ext==='jpg') return 'JPEG';
-  if(ext==='png') return 'PNG';
-  if(ext==='webp') return 'WEBP';
-  return 'PNG';
-}
-
-// ============ RENDERERS DISPATCH ============
 const RENDERERS = {
-  dashboard: renderDashboard,
-  agenda: renderAgenda,
-  estoque: renderEstoque,
-  listacompras: renderListaCompras,
-  fornecedores: renderFornecedores,
-  aluguer: renderAluguer,
-  eventos: renderEventos,
-  checklist: renderChecklist,
-  clientes: renderClientes,
-  facturas: renderFacturas,
-  financeiro: renderFinanceiro,
-  danos: renderDanos,
-  relatorios: renderRelatorios,
-  config: renderConfig
+  dashboard: renderDashboard, agenda: renderAgenda, estoque: renderEstoque, listacompras: renderListaCompras,
+  fornecedores: renderFornecedores, aluguer: renderAluguer, eventos: renderEventos, checklist: renderChecklist,
+  clientes: renderClientes, facturas: renderFacturas, financeiro: renderFinanceiro, danos: renderDanos,
+  relatorios: renderRelatorios, config: renderConfig
 };
 
 // ============ DASHBOARD ============
