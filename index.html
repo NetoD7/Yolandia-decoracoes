@@ -4048,11 +4048,16 @@ function delUser(id){
 }
 
 // ============ INIT ============
+// CORREÇÃO: o logótipo é atribuído de imediato, antes de esperar por loadDB()
+// (que pode demorar alguns segundos se o Supabase estiver inacessível). Assim
+// o logótipo aparece sempre no instante em que a página carrega, independente
+// da rede ou da sincronização com a nuvem.
+document.getElementById('loginLogo').src = LOGO_B64;
+document.getElementById('sideLogo').src = LOGO_B64;
+document.getElementById('yrNow').textContent = new Date().getFullYear();
+
 async function init(){
   await loadDB();
-  document.getElementById('yrNow').textContent = new Date().getFullYear();
-  document.getElementById('loginLogo').src = LOGO_B64;
-  document.getElementById('sideLogo').src = LOGO_B64;
   loadLogoPng();
   applyTheme();
   if(DB.currentUser && DB.users.find(u=>u.id===DB.currentUser)){
