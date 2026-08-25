@@ -659,16 +659,21 @@ async function loadFromSupabase(){
         'Content-Type':'application/json'
       }
     });
-    if(!response.ok) throw new Error('Falha ao carregar do Supabase');
+    if(!response.ok) return false;
     const rows = await response.json();
-    if(rows && rows.length){
-      const payload = rows[0].payload;
-      if(payload && typeof payload === 'object'){ DB = payload; migrateDB(); return true; }
+    if(rows && rows.length > 0){
+      // Garante que o payload não vem vazio/corrompido antes de o aceitar como fonte da verdade.
+      if(rows[0].payload && typeof rows[0].payload === 'object'){
+        DB = rows[0].payload;
+        console.log('✅ Dados recuperados da nuvem com sucesso.');
+        return true;
+      }
     }
-  }catch(e){ console.warn('Supabase indisponível, a usar dados locais.', e); }
+  }catch(e){ console.error('❌ Erro de rede ao carregar da nuvem:', e); }
   return false;
 }
 async function saveToSupabase(){
+  if(!DB || !isAppLoaded) return; // segunda barreira: nunca grava se a app ainda não carregou
   try{
     const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
@@ -680,14 +685,13 @@ async function saveToSupabase(){
       },
       body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
     });
-    if(!response.ok){
-      // Regista o erro devolvido pelo Supabase (ex: política RLS a bloquear a escrita)
-      // para que seja possível diagnosticar no console porque a sincronização falhou.
-      let detalhe = '';
-      try{ detalhe = await response.json(); }catch(e2){ detalhe = await response.text().catch(()=>''); }
-      console.error('Erro Supabase ao guardar (verifique as políticas RLS da tabela app_state):', response.status, detalhe);
+    if(response.ok){
+      console.log('☁️ Sincronizado com a nuvem.');
+    } else {
+      const errorMsg = await response.text();
+      console.error('❌ Falha na sincronização com o Supabase (verifique as políticas RLS da tabela app_state):', response.status, errorMsg);
     }
-  }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
+  }catch(e){ console.error('❌ Erro de ligação ao Supabase:', e); }
 }
 /*
   CORREÇÃO APLICADA (loadDB):
