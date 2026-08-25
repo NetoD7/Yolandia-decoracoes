@@ -466,6 +466,42 @@ const BALAO_TONS = [
   {key:'vibrante', label:'Vibrante'},
   {key:'transparente', label:'Transparente'}
 ];
+// Mapa de Cor Base + Tom -> cor hexadecimal aproximada, usado para gerar a
+// amostra visual (círculo) na coluna "Cor" do estoque de balões.
+const BALAO_COR_HEX = {
+  'Vermelho':      {claro:'#FF8A80', escuro:'#8B0000', metalizado:'#C62828', vibrante:'#FF1744', transparente:'#FFCDD2'},
+  'Azul':          {claro:'#90CAF9', escuro:'#0D3B66', metalizado:'#1976D2', vibrante:'#2962FF', transparente:'#BBDEFB'},
+  'Amarelo':       {claro:'#FFF59D', escuro:'#F9A825', metalizado:'#FBC02D', vibrante:'#FFD600', transparente:'#FFF9C4'},
+  'Verde':         {claro:'#A5D6A7', escuro:'#1B5E20', metalizado:'#43A047', vibrante:'#76FF03', transparente:'#C8E6C9'},
+  'Rosa':          {claro:'#F8BBD0', escuro:'#AD1457', metalizado:'#B76E79', vibrante:'#FF1493', transparente:'#FCE4EC'},
+  'Roxo':          {claro:'#D1C4E9', escuro:'#4A148C', metalizado:'#7E57C2', vibrante:'#7C4DFF', transparente:'#EDE7F6'},
+  'Laranja':       {claro:'#FFCC80', escuro:'#E65100', metalizado:'#FB8C00', vibrante:'#FF6D00', transparente:'#FFE0B2'},
+  'Marrom':        {claro:'#D7CCC8', escuro:'#4E342E', metalizado:'#A97142', vibrante:'#C68642', transparente:'#EFEBE9'},
+  'Cinza':         {claro:'#E0E0E0', escuro:'#424242', metalizado:'#B0BEC5', transparente:'#F5F5F5'},
+  'Branco/Preto':  {claro:'#FFFFFF', escuro:'#111111', metalizado:'#D4AF37', transparente:'#FAFAFA'},
+  'Turquesa':      {claro:'#80CBC4', escuro:'#006064', metalizado:'#26A69A', vibrante:'#00E5FF', transparente:'#B2DFDB'}
+};
+function hexLuminancia(hex){
+  if(!hex) return 1;
+  const c = hex.replace('#','');
+  const r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
+  return (0.299*r + 0.587*g + 0.114*b) / 255;
+}
+// Gera a amostra visual (círculo) + nome da cor para uma linha do estoque de balões.
+// Cores claras/brancas ganham um contorno mais visível para não se perderem no fundo.
+function balaoCorAmostraHtml(b){
+  const nomeCor = b.corResultado || `${b.corBase||''} ${b.tom||''}`.trim() || 'Cor não definida';
+  const hex = (BALAO_COR_HEX[b.corBase]||{})[b.tom];
+  const reconhecida = !!hex;
+  const corFundo = reconhecida ? hex : '#DCD5E8';
+  const clara = hexLuminancia(corFundo) > 0.85;
+  const borda = (clara || !reconhecida) ? '1.5px solid #9C93AE' : '1px solid rgba(0,0,0,.15)';
+  const estiloExtra = reconhecida ? '' : 'background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.06) 0 3px,transparent 3px 6px);';
+  return `<span style="display:inline-flex;align-items:center;gap:7px">
+    <span title="${escapeHtml(nomeCor)}" style="width:16px;height:16px;border-radius:50%;flex-shrink:0;display:inline-block;background:${corFundo};border:${borda};${estiloExtra}"></span>
+    <span>${escapeHtml(nomeCor)}</span>
+  </span>`;
+}
 const MENU = [
   {id:'dashboard', label:'Dashboard', ic:'📊'},
   {id:'agenda', label:'Agenda', ic:'📅'},
@@ -481,6 +517,49 @@ const MENU = [
   {id:'relatorios', label:'Relatórios', ic:'📈'},
   {id:'config', label:'Configurações', ic:'⚙️'},
 ];
+
+// ============ PERMISSÕES DE ACESSO ============
+// Cada módulo define quais níveis de permissão fazem sentido para ele.
+// 'ver' controla a própria visibilidade do módulo no menu e o acesso à página.
+// 'criar'/'editar'/'eliminar' controlam ações específicas dentro do módulo.
+const PERM_MODULES = [
+  {id:'dashboard', label:'Dashboard', ic:'📊', levels:['ver']},
+  {id:'agenda', label:'Agenda', ic:'📅', levels:['ver','criar','editar','eliminar']},
+  {id:'estoque', label:'Estoque', ic:'📦', levels:['ver','criar','editar','eliminar']},
+  {id:'listacompras', label:'Lista de Compras', ic:'🛒', levels:['ver','criar','editar','eliminar']},
+  {id:'fornecedores', label:'Fornecedores', ic:'🚚', levels:['ver','criar','editar','eliminar']},
+  {id:'eventos', label:'Eventos', ic:'🎉', levels:['ver','criar','editar','eliminar']},
+  {id:'checklist', label:'Check List', ic:'✅', levels:['ver','criar','editar','eliminar']},
+  {id:'clientes', label:'Clientes', ic:'👥', levels:['ver','criar','editar','eliminar']},
+  {id:'facturas', label:'Folha de Custo', ic:'🧾', levels:['ver','criar','editar','eliminar']},
+  {id:'financeiro', label:'Financeiro', ic:'💰', levels:['ver','criar','editar','eliminar']},
+  {id:'danos', label:'Danos e Perdas', ic:'⚠️', levels:['ver','criar','editar','eliminar']},
+  {id:'relatorios', label:'Relatórios', ic:'📈', levels:['ver']},
+  {id:'config', label:'Configurações', ic:'⚙️', levels:['ver','editar']},
+];
+const PERM_LEVEL_LABELS = {ver:'Visualizar', criar:'Criar', editar:'Editar', eliminar:'Eliminar'};
+
+function defaultPermissoes(fullAccess){
+  const perms = {};
+  PERM_MODULES.forEach(m=>{
+    perms[m.id] = {};
+    m.levels.forEach(l=>{ perms[m.id][l] = !!fullAccess; });
+  });
+  if(!fullAccess) perms.dashboard.ver = true; // garante que o utilizador tem sempre um ecrã inicial
+  return perms;
+}
+function currentUserObj(){
+  if(!DB || !DB.currentUser) return null;
+  return DB.users.find(u=>u.id===DB.currentUser) || null;
+}
+function hasPerm(moduleId, level){
+  const u = currentUserObj();
+  if(!u) return false;
+  if(u.tipo==='admin') return true;
+  if(!u.permissoes || !u.permissoes[moduleId]) return false;
+  return !!u.permissoes[moduleId][level];
+}
+function hasModuleAccess(moduleId){ return hasPerm(moduleId, 'ver'); }
 
 // ============ STATE / STORAGE ============
 let DB = null;
@@ -516,8 +595,8 @@ function seedData(){
       destinatario:'YOLANDIA COMERCIO PRESTACAO SERVICO LDA'
     },
     users:[
-      {id:'u1', nome:'Administrador', user:'admin', email:'admin@yolandiadecoracoes.ao', senhaHash: simpleHash('admin'), tipo:'admin', ativo:true},
-      {id:'u2', nome:'Funcionário Exemplo', user:'funcionario', email:'funcionario@yolandiadecoracoes.ao', senhaHash: simpleHash('1234'), tipo:'funcionario', ativo:true}
+      {id:'u1', nome:'Administrador', user:'admin', email:'admin@yolandiadecoracoes.ao', telefone:'', cargo:'Administrador', senhaHash: simpleHash('admin'), tipo:'admin', ativo:true, permissoes: defaultPermissoes(true)},
+      {id:'u2', nome:'Funcionário Exemplo', user:'funcionario', email:'funcionario@yolandiadecoracoes.ao', telefone:'', cargo:'Funcionário', senhaHash: simpleHash('1234'), tipo:'funcionario', ativo:true, permissoes: defaultPermissoes(true)}
     ],
     currentUser:null,
     clientes:[
@@ -686,6 +765,17 @@ function migrateDB(){
     if(!u.senhaHash) u.senhaHash = simpleHash('1234');
     if(u.ativo===undefined) u.ativo=true;
     if(u.email===undefined) u.email='';
+    if(u.telefone===undefined) u.telefone='';
+    if(u.cargo===undefined) u.cargo='';
+    // Utilizadores já existentes (criados antes deste sistema de permissões)
+    // mantêm acesso total, para não perderem funcionalidade que já tinham.
+    if(!u.permissoes) u.permissoes = defaultPermissoes(true);
+    else{
+      PERM_MODULES.forEach(m=>{
+        if(!u.permissoes[m.id]) u.permissoes[m.id] = {};
+        m.levels.forEach(l=>{ if(u.permissoes[m.id][l]===undefined) u.permissoes[m.id][l] = (u.tipo==='admin'); });
+      });
+    }
   });
   (DB.facturas||[]).forEach(f=>{
     if(f.iva!==undefined) delete f.iva;
@@ -820,7 +910,8 @@ function enterApp(){
   document.getElementById('userAv').textContent = u ? u.nome.charAt(0).toUpperCase() : 'U';
   applyTheme();
   buildNav();
-  navigate('dashboard');
+  const primeiroAcessivel = MENU.find(m=>hasModuleAccess(m.id));
+  navigate(primeiroAcessivel ? primeiroAcessivel.id : 'dashboard');
 }
 function toggleTheme(){
   DB.config.tema = DB.config.tema==='dark' ? 'light' : 'dark';
@@ -834,12 +925,27 @@ function applyTheme(){
 // ============ NAV ============
 function buildNav(){
   const nav = document.getElementById('navList');
-  nav.innerHTML = MENU.map(m=>`<li><button data-nav="${m.id}" onclick="navigate('${m.id}')"><span class="ic">${m.ic}</span>${m.label}</button></li>`).join('');
+  const visiveis = MENU.filter(m=>hasModuleAccess(m.id));
+  nav.innerHTML = visiveis.map(m=>`<li><button data-nav="${m.id}" onclick="navigate('${m.id}')"><span class="ic">${m.ic}</span>${m.label}</button></li>`).join('');
 }
 function navigate(view){
+  const m = MENU.find(x=>x.id===view);
+  if(!hasModuleAccess(view)){
+    currentView = view;
+    document.querySelectorAll('#navList button').forEach(b=>b.classList.remove('active'));
+    document.getElementById('pageTitle').innerHTML = `<span>🚫</span> Acesso não autorizado`;
+    document.getElementById('content').innerHTML = `
+      <div class="empty-state">
+        <div class="em-ic">🚫</div>
+        <div class="em-t">Acesso não autorizado</div>
+        <p style="color:var(--text-mut);font-size:13px;margin-top:6px;max-width:420px;margin-left:auto;margin-right:auto">
+          Não tem permissão para aceder ao módulo${m?` "${escapeHtml(m.label)}"`:''}. Contacte o administrador se precisar deste acesso.
+        </p>
+      </div>`;
+    return;
+  }
   currentView = view;
   document.querySelectorAll('#navList button').forEach(b=>b.classList.toggle('active', b.dataset.nav===view));
-  const m = MENU.find(x=>x.id===view);
   document.getElementById('pageTitle').innerHTML = `<span>${m?m.ic:''}</span> ${m?m.label:''}`;
   const c = document.getElementById('content');
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-mut)">A carregar...</div>';
@@ -1094,7 +1200,7 @@ function renderAgenda(){
         <button class="${calMode==='dia'?'active':''}" onclick="setCalMode('dia')">Dia</button>
       </div>
       <div class="search"><input id="agSearch" placeholder="Pesquisar por cliente ou local..." oninput="renderAgendaBody()"></div>
-      <button class="btn btn-brand" onclick="openEventoForm()">+ Novo Evento</button>
+      ${hasPerm('eventos','criar')? `<button class="btn btn-brand" onclick="openEventoForm()">+ Novo Evento</button>` : ''}
     </div>
     <div class="legend">
       ${Object.entries(EVENTO_STATUS).map(([k,v])=>`<div class="lg-item"><span class="lg-dot" style="background:${v.color}"></span>${v.label}</div>`).join('')}
@@ -1316,8 +1422,8 @@ function renderEstoqueBody(){
       <div class="toolbar">
         <div class="search"><input id="fxSearch" placeholder="Pesquisar material..." oninput="renderEstoqueBody()"></div>
         <button class="btn btn-turq" onclick="exportEstoquePDF()">⬇ PDF</button>
-        <label class="btn btn-ghost">⬆ Upload Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMateriaisFixosExcel(this)"></label>
-        <button class="btn btn-brand" onclick="openMaterialFixoForm()">+ Novo Material</button>
+        ${hasPerm('estoque','criar')? `<label class="btn btn-ghost">⬆ Upload Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMateriaisFixosExcel(this)"></label>
+        <button class="btn btn-brand" onclick="openMaterialFixoForm()">+ Novo Material</button>` : ''}
       </div>
       <p style="font-size:11px;color:var(--text-mut);margin:-8px 0 14px">Colunas esperadas na 1ª linha (cabeçalho): Código, Nome, Categoria, Data de Aquisição, Fornecedor, Estado, Quantidade, Valor. As fotografias não são importadas — devem ser adicionadas diretamente em cada item.</p>
       <div class="table-wrap"><table><thead><tr>
@@ -1336,15 +1442,15 @@ function renderEstoqueBody(){
         <td>${estadoBadge(m.estado)}</td>
         <td>${m.quantidade}</td>
         <td>${fmtMoney(m.valor)}</td>
-        <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openMaterialFixoForm('${m.id}')">✎</button> <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','fixo')" title="Histórico">🕘</button> <button class="btn btn-sm btn-danger" onclick="delMaterialFixo('${m.id}')">🗑</button></td>
+        <td style="white-space:nowrap">${hasPerm('estoque','editar')?`<button class="btn btn-sm" onclick="openMaterialFixoForm('${m.id}')">✎</button>`:''} <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','fixo')" title="Histórico">🕘</button> ${hasPerm('estoque','eliminar')?`<button class="btn btn-sm btn-danger" onclick="delMaterialFixo('${m.id}')">🗑</button>`:''}</td>
       </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">📦</div><div class="em-t">Nenhum material encontrado</div></div></td></tr>`;
   } else if(estoqueTab==='consumiveis'){
     el.innerHTML = `
       <div class="toolbar">
         <div class="search"><input id="csSearch" placeholder="Pesquisar consumível..." oninput="renderEstoqueBody()"></div>
         <button class="btn btn-turq" onclick="exportEstoquePDF()">⬇ PDF</button>
-        <label class="btn btn-ghost">⬆ Upload Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importConsumiveisExcel(this)"></label>
-        <button class="btn btn-brand" onclick="openConsumivelForm()">+ Novo Consumível</button>
+        ${hasPerm('estoque','criar')? `<label class="btn btn-ghost">⬆ Upload Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importConsumiveisExcel(this)"></label>
+        <button class="btn btn-brand" onclick="openConsumivelForm()">+ Novo Consumível</button>` : ''}
       </div>
       <p style="font-size:11px;color:var(--text-mut);margin:-8px 0 14px">Colunas esperadas: Nome, Tipo (balão/outro), Cor, Tamanho, Quantidade, Unidade, Preço de Compra, Estoque Mínimo, Fornecedor. As fotografias não são importadas — devem ser adicionadas diretamente em cada item.</p>
       <div class="table-wrap"><table><thead><tr>
@@ -1365,10 +1471,10 @@ function renderEstoqueBody(){
         <td><span class="badge ${m.tipoAquisicao==='aluguer'?'info':'purple'}">${m.tipoAquisicao==='aluguer'?'Aluguer':'Compra'}</span></td>
         <td style="font-size:12px">${escapeHtml(fornecedorNome(m.fornecedor_id))}</td>
         <td style="white-space:nowrap">
-          ${low? `<button class="btn btn-sm btn-turq" onclick="addToListaComprasFromEstoque('${m.id}')" title="Actualizar item fixo na Lista de Compras">🛒</button>`:''}
-          <button class="btn btn-sm" onclick="openConsumivelForm('${m.id}')">✎</button>
+          ${low && hasPerm('estoque','criar')? `<button class="btn btn-sm btn-turq" onclick="addToListaComprasFromEstoque('${m.id}')" title="Actualizar item fixo na Lista de Compras">🛒</button>`:''}
+          ${hasPerm('estoque','editar')? `<button class="btn btn-sm" onclick="openConsumivelForm('${m.id}')">✎</button>`:''}
           <button class="btn btn-sm" onclick="viewHistoricoMaterial('${m.id}','consumivel')" title="Histórico">🕘</button>
-          <button class="btn btn-sm btn-danger" onclick="delConsumivel('${m.id}')">🗑</button>
+          ${hasPerm('estoque','eliminar')? `<button class="btn btn-sm btn-danger" onclick="delConsumivel('${m.id}')">🗑</button>`:''}
         </td>
       </tr>`}).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🎈</div><div class="em-t">Nenhum consumível encontrado</div></div></td></tr>`;
   } else {
@@ -1380,12 +1486,12 @@ function renderEstoqueBody(){
           ${DB.fornecedores.map(f=>`<option value="${f.id}">${escapeHtml(f.nome)}</option>`).join('')}
         </select>
         <button class="btn btn-turq" onclick="exportBaloesExcel()">⬇ Excel</button>
-        <label class="btn btn-ghost">⬆ Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importBaloesExcel(this)"></label>
-        <button class="btn btn-brand" onclick="openBalaoForm()">+ Novo Balão</button>
+        ${hasPerm('estoque','criar')? `<label class="btn btn-ghost">⬆ Importar Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importBaloesExcel(this)"></label>
+        <button class="btn btn-brand" onclick="openBalaoForm()">+ Novo Balão</button>` : ''}
       </div>
       <p style="font-size:11.5px;color:var(--text-mut);margin:-6px 0 14px">Cada combinação de Cor Base + Tom + Tamanho é um item de stock independente. A cor resultante é calculada automaticamente a partir do catálogo.</p>
       <div class="table-wrap"><table><thead><tr>
-        <th>Cor Resultante</th><th>Base / Tom</th><th>Tamanho</th><th>Qtd</th><th>Unid.</th><th>Mín.</th><th>Aquisição</th><th>Fornecedor</th><th></th>
+        <th>Cor Resultante</th><th>Cor</th><th>Base / Tom</th><th>Tamanho</th><th>Qtd</th><th>Unid.</th><th>Mín.</th><th>Aquisição</th><th>Fornecedor</th><th></th>
       </tr></thead><tbody id="blTbody"></tbody></table></div>`;
     const q = (document.getElementById('blSearch').value||'').toLowerCase();
     const filtroForn = document.getElementById('blFiltroFornecedor').value;
@@ -1401,6 +1507,7 @@ function renderEstoqueBody(){
       const tomLbl = (BALAO_TONS.find(t=>t.key===b.tom)||{}).label || b.tom;
       return `<tr>
         <td><b>${escapeHtml(b.corResultado)}</b></td>
+        <td>${balaoCorAmostraHtml(b)}</td>
         <td style="font-size:11.5px;color:var(--text-mut)">${escapeHtml(b.corBase)} · ${escapeHtml(tomLbl)}</td>
         <td>${escapeHtml(tamanhoFinal)}</td>
         <td style="${low?'color:var(--danger);font-weight:700':''}">${b.quantidade} ${low?'⚠️':''}</td>
@@ -1409,13 +1516,13 @@ function renderEstoqueBody(){
         <td><span class="badge purple">${escapeHtml(balaoAquisicaoTexto(b.tipoAquisicao))}</span></td>
         <td style="font-size:12px">${escapeHtml(fornecedorNome(b.fornecedor_id))}</td>
         <td style="white-space:nowrap">
-          ${low? `<button class="btn btn-sm btn-turq" onclick="addBalaoToListaCompras('${b.id}')" title="Adicionar à Lista de Compras">🛒</button>`:''}
-          <button class="btn btn-sm" onclick="openBalaoForm('${b.id}')">✎</button>
+          ${low && hasPerm('estoque','criar')? `<button class="btn btn-sm btn-turq" onclick="addBalaoToListaCompras('${b.id}')" title="Adicionar à Lista de Compras">🛒</button>`:''}
+          ${hasPerm('estoque','editar')? `<button class="btn btn-sm" onclick="openBalaoForm('${b.id}')">✎</button>`:''}
           <button class="btn btn-sm" onclick="viewHistoricoMaterial('${b.id}','balao')" title="Histórico">🕘</button>
-          <button class="btn btn-sm btn-danger" onclick="delBalao('${b.id}')">🗑</button>
+          ${hasPerm('estoque','eliminar')? `<button class="btn btn-sm btn-danger" onclick="delBalao('${b.id}')">🗑</button>`:''}
         </td>
       </tr>`;
-    }).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="em-ic">🎈</div><div class="em-t">Nenhum balão cadastrado</div></div></td></tr>`;
+    }).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🎈</div><div class="em-t">Nenhum balão cadastrado</div></div></td></tr>`;
   }
 }
 function estadoBadge(estado){
@@ -1457,6 +1564,7 @@ function openMaterialFixoForm(id){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveMaterialFixo('${m.id||''}')">Guardar</button>`, true);
 }
 function saveMaterialFixo(id){
+  if(!hasPerm('estoque', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('mfNome').value.trim();
   if(!nome){ toast('Indique o nome do material','err'); return; }
   const novoValor = Number(document.getElementById('mfValor').value)||0;
@@ -1485,6 +1593,7 @@ function saveMaterialFixo(id){
   saveDB(); closeModal(); renderEstoqueBody(); toast('Material guardado com sucesso.','ok');
 }
 function delMaterialFixo(id){
+  if(!hasPerm('estoque','eliminar')){ toast('Não tem permissão para eliminar materiais.','err'); return; }
   if(!confirm('Remover este material?')) return;
   DB.materiaisFixos = DB.materiaisFixos.filter(x=>x.id!==id); saveDB(); renderEstoqueBody();
 }
@@ -1524,6 +1633,7 @@ function openConsumivelForm(id){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveConsumivel('${m.id||''}')">Guardar</button>`, true);
 }
 function saveConsumivel(id){
+  if(!hasPerm('estoque', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('csNome').value.trim();
   if(!nome){ toast('Indique o nome','err'); return; }
   const novoPreco = Number(document.getElementById('csPreco').value)||0;
@@ -1549,6 +1659,7 @@ function saveConsumivel(id){
   saveDB(); closeModal(); renderEstoqueBody(); toast('Consumível guardado.','ok');
 }
 function delConsumivel(id){
+  if(!hasPerm('estoque','eliminar')){ toast('Não tem permissão para eliminar consumíveis.','err'); return; }
   if(!confirm('Remover este consumível?')) return;
   DB.consumiveis = DB.consumiveis.filter(x=>x.id!==id); saveDB(); renderEstoqueBody();
 }
@@ -1620,6 +1731,7 @@ function toggleBalaoTamanhoCustom(){
   document.getElementById('blTamanhoCustomBox').style.display = v==='Outro'? 'block':'none';
 }
 function saveBalao(id){
+  if(!hasPerm('estoque', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const corBase = document.getElementById('blCorBase').value;
   const tom = document.getElementById('blTom').value;
   const corResultado = (BALOES_CATALOGO[corBase]||{})[tom] || `${corBase} ${tom}`;
@@ -1653,6 +1765,7 @@ function saveBalao(id){
   saveDB(); closeModal(); renderEstoqueBody(); toast('Balão guardado.','ok');
 }
 function delBalao(id){
+  if(!hasPerm('estoque','eliminar')){ toast('Não tem permissão para eliminar balões.','err'); return; }
   if(!confirm('Remover este item de balão?')) return;
   DB.baloes = DB.baloes.filter(x=>x.id!==id); saveDB(); renderEstoqueBody();
 }
@@ -1851,7 +1964,7 @@ function renderListaCompras(){
         <option value="cancelado">Cancelado</option>
       </select>
       <button class="btn btn-turq" onclick="exportListaComprasPDF()">⬇ Exportar PDF</button>
-      <button class="btn btn-ghost" onclick="openListaComprasForm()">+ Adicionar Item</button>
+      ${hasPerm('listacompras','criar')? `<button class="btn btn-ghost" onclick="openListaComprasForm()">+ Adicionar Item</button>` : ''}
     </div>
     <p id="lcListaHeading" style="font-size:12px;color:var(--text-mut);margin:-8px 0 4px;font-weight:600">${listaAtual? (listaAtual.evento_id? `🎉 Evento: ${escapeHtml(listaAtual.nome)}` : `📦 ${escapeHtml(listaAtual.nome)}`) : ''}</p>
     <p style="font-size:11.5px;color:var(--text-mut);margin:0 0 14px">Cada evento gera automaticamente a sua própria lista de compras — sem necessidade de criar listas manualmente. Itens sem evento associado ficam em "Compras Gerais".</p>
@@ -1891,9 +2004,9 @@ function renderListaComprasBody(){
       <td>${l.tipoAquisicao==='aluguer'?'Aluguer':'Compra'}</td>
       <td>${listaCompraEstadoBadge(l.status)}</td>
       <td style="white-space:nowrap">
-        ${l.status==='pendente'? `<button class="btn btn-sm btn-turq" onclick="resolverListaCompraRapido('${l.id}')" title="Marcar como resolvido">✓</button>`:''}
-        <button class="btn btn-sm" onclick="openListaComprasForm('${l.id}')">✎</button>
-        <button class="btn btn-sm btn-danger" onclick="delListaCompra('${l.id}')">🗑</button>
+        ${l.status==='pendente' && hasPerm('listacompras','editar')? `<button class="btn btn-sm btn-turq" onclick="resolverListaCompraRapido('${l.id}')" title="Marcar como resolvido">✓</button>`:''}
+        ${hasPerm('listacompras','editar')? `<button class="btn btn-sm" onclick="openListaComprasForm('${l.id}')">✎</button>`:''}
+        ${hasPerm('listacompras','eliminar')? `<button class="btn btn-sm btn-danger" onclick="delListaCompra('${l.id}')">🗑</button>`:''}
       </td>
     </tr>`;
   }).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="em-ic">🛒</div><div class="em-t">Nenhum item nesta lista</div></div></td></tr>`;
@@ -1987,6 +2100,7 @@ function openListaComprasForm(id){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveListaComprasForm('${l.id||''}')">Guardar</button>`, true);
 }
 function saveListaComprasForm(id){
+  if(!hasPerm('listacompras', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('lcMaterial').value.trim();
   if(!nome){ toast('Indique o nome do material','err'); return; }
   const fornecedorId = resolveFornecedorFromForm('lc');
@@ -2012,6 +2126,7 @@ function saveListaComprasForm(id){
   saveDB(); closeModal(); renderListaComprasBody(); toast('Item guardado.','ok');
 }
 function delListaCompra(id){
+  if(!hasPerm('listacompras','eliminar')){ toast('Não tem permissão para eliminar itens.','err'); return; }
   if(!confirm('Remover este item da lista?')) return;
   DB.listaCompras = DB.listaCompras.filter(x=>x.id!==id); saveDB(); renderListaComprasBody();
 }
@@ -2053,7 +2168,7 @@ function renderFornecedores(){
   c.innerHTML = `
     <div class="toolbar">
       <div class="search"><input id="frSearch" placeholder="Pesquisar por nome ou empresa..." oninput="renderFornecedoresBody()"></div>
-      <button class="btn btn-brand" onclick="openFornecedorForm()">+ Novo Fornecedor</button>
+      ${hasPerm('fornecedores','criar')? `<button class="btn btn-brand" onclick="openFornecedorForm()">+ Novo Fornecedor</button>` : ''}
     </div>
     <div class="table-wrap"><table><thead><tr>
       <th>Nome</th><th>Empresa</th><th>Telefone</th><th>Email</th><th>Contacto</th><th></th>
@@ -2064,6 +2179,7 @@ function renderFornecedores(){
 function renderFornecedoresBody(){
   const q = (document.getElementById('frSearch').value||'').toLowerCase();
   const rows = DB.fornecedores.filter(f=>!q || (f.nome+f.empresa).toLowerCase().includes(q));
+  const podeEditar = hasPerm('fornecedores','editar'), podeEliminar = hasPerm('fornecedores','eliminar');
   document.getElementById('frTbody').innerHTML = rows.length? rows.map(f=>{
     const nMat = DB.alugaveis.filter(m=>m.fornecedor_id===f.id).length;
     return `<tr>
@@ -2075,8 +2191,8 @@ function renderFornecedoresBody(){
       <td style="white-space:nowrap">
         <button class="btn btn-sm btn-turq" onclick="viewFornecedorMateriais('${f.id}')" title="Materiais Alugáveis (${nMat})">🎪 ${nMat}</button>
         <button class="btn btn-sm" onclick="viewFornecedor('${f.id}')">👁</button>
-        <button class="btn btn-sm" onclick="openFornecedorForm('${f.id}')">✎</button>
-        <button class="btn btn-sm btn-danger" onclick="delFornecedor('${f.id}')">🗑</button>
+        ${podeEditar? `<button class="btn btn-sm" onclick="openFornecedorForm('${f.id}')">✎</button>`:''}
+        ${podeEliminar? `<button class="btn btn-sm btn-danger" onclick="delFornecedor('${f.id}')">🗑</button>`:''}
       </td>
     </tr>`;
   }).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="em-ic">🚚</div><div class="em-t">Nenhum fornecedor cadastrado</div></div></td></tr>`;
@@ -2121,6 +2237,7 @@ function openFornecedorForm(id){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveFornecedor('${f.id||''}')">Guardar</button>`, true);
 }
 function saveFornecedor(id){
+  if(!hasPerm('fornecedores', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('frNome').value.trim();
   if(!nome){ toast('Indique o nome do fornecedor','err'); return; }
   const data = {
@@ -2134,6 +2251,7 @@ function saveFornecedor(id){
   saveDB(); closeModal(); renderFornecedoresBody(); toast('Fornecedor guardado.','ok');
 }
 function delFornecedor(id){
+  if(!hasPerm('fornecedores','eliminar')){ toast('Não tem permissão para eliminar fornecedores.','err'); return; }
   if(!confirm('Remover este fornecedor? Os materiais associados manterão o histórico mas ficarão sem fornecedor vinculado.')) return;
   DB.fornecedores = DB.fornecedores.filter(x=>x.id!==id);
   ['materiaisFixos','consumiveis','alugaveis'].forEach(key=>{ DB[key].forEach(m=>{ if(m.fornecedor_id===id) m.fornecedor_id=''; }); });
@@ -2482,7 +2600,7 @@ function renderEventos(){
         <option value="">Todos os estados</option>
         ${Object.entries(EVENTO_STATUS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}
       </select>
-      <button class="btn btn-brand" onclick="openEventoForm()">+ Novo Evento</button>
+      ${hasPerm('eventos','criar')? `<button class="btn btn-brand" onclick="openEventoForm()">+ Novo Evento</button>` : ''}
     </div>
     <div id="eventosGrid" class="grid grid-3"></div>
   `;
@@ -2559,6 +2677,7 @@ function autoConfirmarConsumiveisEvento(ev){
   });
 }
 function saveEvento(id){
+  if(!hasPerm('eventos', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('evNome').value.trim();
   if(!nome){ toast('Indique o nome do evento','err'); return; }
   const data = {
@@ -2582,6 +2701,7 @@ function saveEvento(id){
   toast('Evento guardado com sucesso.','ok');
 }
 function delEvento(id){
+  if(!hasPerm('eventos','eliminar')){ toast('Não tem permissão para eliminar eventos.','err'); return; }
   if(!confirm('Remover este evento?')) return;
   DB.eventos = DB.eventos.filter(x=>x.id!==id); saveDB(); closeModal();
   if(currentView==='eventos') renderEventosBody(); else renderAgendaBody();
@@ -2602,9 +2722,9 @@ function openEventoDetalhe(id){
     <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
     <h4 style="margin-bottom:8px">Materiais/Consumíveis reservados (${e.materiais.length})</h4>
     ${e.materiais.length? e.materiais.map(m=>`<div style="font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)">${escapeHtml(m.nome)} <span class="badge muted" style="font-size:9px">${m.tipo==='consumivel'?'Consumível':m.tipo==='alugavel'?'Alugável':'Fixo'}</span> — ${m.qtdNecessaria} un.</div>`).join('') : '<p style="font-size:12.5px;color:var(--text-mut)">Nenhum material vinculado. Utilize o Check List para adicionar.</p>'}
-  `, `<button class="btn" onclick="openEventoForm('${e.id}')">✎ Editar</button>
+  `, `${hasPerm('eventos','editar')?`<button class="btn" onclick="openEventoForm('${e.id}')">✎ Editar</button>`:''}
       <button class="btn btn-turq" onclick="closeModal(); navigate('checklist'); setTimeout(()=>openChecklistFor('${e.id}'),50)">✅ Ver Check List</button>
-      <button class="btn btn-danger" onclick="delEvento('${e.id}')">🗑 Remover</button>`, true);
+      ${hasPerm('eventos','eliminar')?`<button class="btn btn-danger" onclick="delEvento('${e.id}')">🗑 Remover</button>`:''}`, true);
 }
 
 // ============ CHECK LIST (Fixos + Alugáveis + Consumíveis, com verificação inteligente de estoque) ============
@@ -2641,9 +2761,9 @@ function renderChecklistBody(){
           ${(function(){ const fac=DB.facturas.find(f=>f.evento_id===e.id); return fac? `<span class="badge ${fac.status==='paga'?'ok':fac.status==='rascunho'?'muted':'warn'}" style="margin-top:6px;display:inline-block">🧾 Folha de Custo #${String(fac.numero).padStart(4,'0')} · ${fac.status}</span>` : `<span class="badge muted" style="margin-top:6px;display:inline-block">Sem Folha de Custo sincronizada ainda</span>`; })()}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-brand btn-sm" onclick="openFacturaForm('${e.id}')">🧾 Folha de Custo do Evento</button>
+          ${hasPerm('facturas','criar')||hasPerm('facturas','editar')? `<button class="btn btn-brand btn-sm" onclick="openFacturaForm('${e.id}')">🧾 Folha de Custo do Evento</button>` : ''}
           <button class="btn btn-turq btn-sm" onclick="printChecklist()">🖨 Imprimir</button>
-          <button class="btn btn-brand btn-sm" onclick="openAddChecklistItem()">+ Adicionar material</button>
+          ${hasPerm('checklist','criar')? `<button class="btn btn-brand btn-sm" onclick="openAddChecklistItem()">+ Adicionar material</button>` : ''}
         </div>
       </div>
     </div>
@@ -2671,8 +2791,8 @@ function renderChecklistBody(){
         </div>` : `<div style="margin-top:6px">${m.consumoConfirmado? `<span class="badge ok">Consumo já descontado do estoque</span>` : `<button class="btn btn-sm btn-turq" onclick="confirmarConsumoConsumivel(${idx})">✓ Confirmar consumo (baixar estoque)</button>`}</div>`}
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="openEditChecklistItem(${idx})">✎</button>
-        <button class="btn btn-sm btn-danger" onclick="removeChecklistItem(${idx})">🗑</button>
+        ${hasPerm('checklist','editar')? `<button class="btn btn-sm" onclick="openEditChecklistItem(${idx})">✎</button>`:''}
+        ${hasPerm('checklist','eliminar')? `<button class="btn btn-sm btn-danger" onclick="removeChecklistItem(${idx})">🗑</button>`:''}
       </div>
     </div>
   `}).join('') : `<div class="empty-state"><div class="em-ic">📦</div><div class="em-t">Nenhum material adicionado a este evento</div></div>`;
@@ -2926,7 +3046,7 @@ function renderClientes(){
   c.innerHTML = `
     <div class="toolbar">
       <div class="search"><input id="clSearch" placeholder="Pesquisar por nome, telefone ou email..." oninput="renderClientesBody()"></div>
-      <button class="btn btn-brand" onclick="openClienteForm()">+ Novo Cliente</button>
+      ${hasPerm('clientes','criar')? `<button class="btn btn-brand" onclick="openClienteForm()">+ Novo Cliente</button>` : ''}
     </div>
     <div class="table-wrap"><table><thead><tr>
       <th>Nome</th><th>Telefone</th><th>Email</th><th>Empresa</th><th>Alugueres</th><th>Facturas</th><th></th>
@@ -2937,6 +3057,7 @@ function renderClientes(){
 function renderClientesBody(){
   const q = (document.getElementById('clSearch').value||'').toLowerCase();
   const rows = DB.clientes.filter(c=>!q || (c.nome+c.telefone+c.email).toLowerCase().includes(q));
+  const podeEditar = hasPerm('clientes','editar'), podeEliminar = hasPerm('clientes','eliminar');
   document.getElementById('clTbody').innerHTML = rows.length? rows.map(c=>{
     const nAlug = DB.alugueres.filter(a=>a.cliente_id===c.id).length;
     const nFact = DB.facturas.filter(f=>f.cliente_id===c.id).length;
@@ -2947,7 +3068,7 @@ function renderClientesBody(){
       <td>${escapeHtml(c.empresa)||'-'}</td>
       <td>${nAlug}</td>
       <td>${nFact}</td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewCliente('${c.id}')">👁</button> <button class="btn btn-sm" onclick="openClienteForm('${c.id}')">✎</button> <button class="btn btn-sm btn-danger" onclick="delCliente('${c.id}')">🗑</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewCliente('${c.id}')">👁</button> ${podeEditar? `<button class="btn btn-sm" onclick="openClienteForm('${c.id}')">✎</button>`:''} ${podeEliminar? `<button class="btn btn-sm btn-danger" onclick="delCliente('${c.id}')">🗑</button>`:''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="em-ic">👥</div><div class="em-t">Nenhum cliente encontrado</div></div></td></tr>`;
 }
@@ -2968,6 +3089,7 @@ function openClienteForm(id){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveCliente('${c.id||''}')">Guardar</button>`);
 }
 function saveCliente(id){
+  if(!hasPerm('clientes', id?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const nome = document.getElementById('clNome').value.trim();
   if(!nome){ toast('Indique o nome do cliente','err'); return; }
   const data = {
@@ -2980,6 +3102,7 @@ function saveCliente(id){
   saveDB(); closeModal(); renderClientesBody(); toast('Cliente guardado.','ok');
 }
 function delCliente(id){
+  if(!hasPerm('clientes','eliminar')){ toast('Não tem permissão para eliminar clientes.','err'); return; }
   if(!confirm('Remover este cliente?')) return;
   DB.clientes = DB.clientes.filter(x=>x.id!==id); saveDB(); renderClientesBody();
 }
@@ -3008,7 +3131,7 @@ function renderFacturas(){
   c.innerHTML = `
     <div class="toolbar">
       <div class="search"><input id="fpSearch" placeholder="Pesquisar por cliente ou número..." oninput="renderFacturasBody()"></div>
-      <button class="btn btn-brand" onclick="openFacturaForm()">+ Nova Folha de Custo</button>
+      ${hasPerm('facturas','criar')? `<button class="btn btn-brand" onclick="openFacturaForm()">+ Nova Folha de Custo</button>` : ''}
     </div>
     <div class="table-wrap"><table><thead><tr>
       <th>Nº</th><th>Cliente</th><th>Data</th><th>Custo Total</th><th>Multiplicador</th><th>Valor Proforma</th><th>Total a Pagar</th><th>Status</th><th></th>
@@ -3031,9 +3154,9 @@ function renderFacturasBody(){
       <td><span class="badge ${f.status==='paga'?'ok':f.status==='rascunho'?'muted':f.status==='pendente'?'warn':'info'}">${f.status}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="viewFactura('${f.id}')">👁</button>
-        <button class="btn btn-sm" onclick="openFacturaForm(null,'${f.id}')" title="Editar">✎</button>
+        ${hasPerm('facturas','editar')? `<button class="btn btn-sm" onclick="openFacturaForm(null,'${f.id}')" title="Editar">✎</button>`:''}
         <button class="btn btn-sm btn-turq" onclick="exportFacturaPDF('${f.id}')">PDF</button>
-        <button class="btn btn-sm btn-danger" onclick="delFactura('${f.id}')">🗑</button>
+        ${hasPerm('facturas','eliminar')? `<button class="btn btn-sm btn-danger" onclick="delFactura('${f.id}')">🗑</button>`:''}
       </td>
     </tr>`).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="em-ic">🧾</div><div class="em-t">Nenhuma folha de custo registada</div></div></td></tr>`;
 }
@@ -3186,6 +3309,7 @@ function renderTotaisFactura(){
   box.innerHTML = `Valor da Factura Proforma: ${fmtMoney(valorFinal)}<br>Desconto: -${fmtMoney(desconto)}<br>${retencaoAtiva?`Retenção na Fonte (${percentual}%): -${fmtMoney(valorRetencao)}<br>`:''}<b style="font-size:16px;color:var(--roxo)">Total a Pagar: ${fmtMoney(total)}</b>`;
 }
 function saveFactura(){
+  if(!hasPerm('facturas', editingFacturaId?'editar':'criar')){ toast('Não tem permissão para esta ação.','err'); return; }
   const clienteId = document.getElementById('fpCliente').value;
   if(!clienteId){ toast('Selecione um cliente','err'); return; }
   if(novaFacturaItens.length===0){ toast('Adicione pelo menos um item à folha de custo','err'); return; }
@@ -3227,6 +3351,7 @@ function saveFactura(){
   toast('Folha de Custo gerada com sucesso.','ok');
 }
 function delFactura(id){
+  if(!hasPerm('facturas','eliminar')){ toast('Não tem permissão para eliminar folhas de custo.','err'); return; }
   if(!confirm('Remover esta folha de custo?')) return;
   DB.facturas = DB.facturas.filter(x=>x.id!==id); saveDB(); renderFacturasBody();
 }
@@ -3531,7 +3656,7 @@ function renderFinBody(){
     },30);
   } else if(financeiroTab==='receitas'){
     el.innerHTML = `
-      <div class="toolbar"><button class="btn btn-brand" onclick="openAdiantamentoForm()">+ Registar Adiantamento</button></div>
+      <div class="toolbar">${hasPerm('financeiro','criar')? `<button class="btn btn-brand" onclick="openAdiantamentoForm()">+ Registar Adiantamento</button>` : ''}</div>
       <div class="grid grid-2">
         <div class="card">
           <h3 style="margin-bottom:10px">Folhas de Custo / Facturas Proforma</h3>
@@ -3548,11 +3673,11 @@ function renderFinBody(){
       </div>`;
   } else if(financeiroTab==='despesas'){
     el.innerHTML = `
-      <div class="toolbar"><button class="btn btn-brand" onclick="openDespesaForm()">+ Registar Despesa</button></div>
+      <div class="toolbar">${hasPerm('financeiro','criar')? `<button class="btn btn-brand" onclick="openDespesaForm()">+ Registar Despesa</button>` : ''}</div>
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Valor</th><th></th></tr></thead><tbody id="despTbody"></tbody></table></div>`;
     document.getElementById('despTbody').innerHTML = DB.despesas.length? DB.despesas.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(d=>`
       <tr><td>${fmtDate(d.data)}</td><td><span class="badge purple">${escapeHtml(d.categoria)}</span></td><td>${escapeHtml(d.descricao)}</td><td>${fmtMoney(d.valor)}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="delDespesa('${d.id}')">🗑</button></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><div class="em-t">Nenhuma despesa registada</div></div></td></tr>`;
+      <td>${hasPerm('financeiro','eliminar')?`<button class="btn btn-sm btn-danger" onclick="delDespesa('${d.id}')">🗑</button>`:''}</td></tr>`).join('') : `<tr><td colspan="5"><div class="empty-state"><div class="em-t">Nenhuma despesa registada</div></div></td></tr>`;
   } else {
     const hoje = todayISO();
     const entradasHoje = DB.facturas.filter(f=>f.data===hoje).reduce((s,f)=>s+Number(f.total||0),0) + DB.adiantamentos.filter(a=>a.data===hoje).reduce((s,a)=>s+Number(a.valor||0),0);
@@ -3583,12 +3708,16 @@ function openDespesaForm(){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveDespesa()">Guardar</button>`);
 }
 function saveDespesa(){
+  if(!hasPerm('financeiro','criar')){ toast('Não tem permissão para registar despesas.','err'); return; }
   const valor = Number(document.getElementById('dpValor').value)||0;
   if(valor<=0){ toast('Indique um valor válido','err'); return; }
   DB.despesas.push({id:uid('dp'), categoria:document.getElementById('dpCategoria').value, data:document.getElementById('dpData').value, descricao:document.getElementById('dpDescricao').value.trim(), valor});
   saveDB(); closeModal(); renderFinBody(); toast('Despesa registada.','ok');
 }
-function delDespesa(id){ DB.despesas = DB.despesas.filter(x=>x.id!==id); saveDB(); renderFinBody(); }
+function delDespesa(id){
+  if(!hasPerm('financeiro','eliminar')){ toast('Não tem permissão para eliminar despesas.','err'); return; }
+  DB.despesas = DB.despesas.filter(x=>x.id!==id); saveDB(); renderFinBody();
+}
 function openAdiantamentoForm(){
   const clientesOpts = DB.clientes.map(c=>`<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
   openModal('Registar Adiantamento', `
@@ -3600,6 +3729,7 @@ function openAdiantamentoForm(){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveAdiantamento()">Guardar</button>`);
 }
 function saveAdiantamento(){
+  if(!hasPerm('financeiro','criar')){ toast('Não tem permissão para registar adiantamentos.','err'); return; }
   const valor = Number(document.getElementById('adValor').value)||0;
   if(valor<=0){ toast('Indique um valor válido','err'); return; }
   DB.adiantamentos.push({id:uid('ad'), cliente_id:document.getElementById('adCliente').value, valor, data:document.getElementById('adData').value});
@@ -3612,7 +3742,7 @@ function renderDanos(){
   c.innerHTML = `
     <div class="toolbar">
       <div class="search"><input id="dnSearch" placeholder="Pesquisar por material ou cliente..." oninput="renderDanosBody()"></div>
-      <button class="btn btn-brand" onclick="openOcorrenciaForm()">+ Nova Ocorrência</button>
+      ${hasPerm('danos','criar')? `<button class="btn btn-brand" onclick="openOcorrenciaForm()">+ Nova Ocorrência</button>` : ''}
     </div>
     <div class="grid grid-4" id="dnStats"></div>
     <div class="table-wrap" style="margin-top:16px"><table><thead><tr>
@@ -3642,7 +3772,7 @@ function renderDanosBody(){
       <td>${o.quantidade}</td>
       <td>${ocorrenciaBadge(o.estado)}</td>
       <td>${fmtMoney(o.valorPrejuizo)}</td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewOcorrencia('${o.id}')">👁</button> <button class="btn btn-sm btn-danger" onclick="delOcorrencia('${o.id}')">🗑</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="viewOcorrencia('${o.id}')">👁</button> ${hasPerm('danos','eliminar')?`<button class="btn btn-sm btn-danger" onclick="delOcorrencia('${o.id}')">🗑</button>`:''}</td>
     </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="em-ic">⚠️</div><div class="em-t">Nenhuma ocorrência registada</div></div></td></tr>`;
 
   const contagem = {};
@@ -3691,6 +3821,7 @@ function openOcorrenciaForm(){
   `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveOcorrencia()">Registar</button>`, true);
 }
 function saveOcorrencia(){
+  if(!hasPerm('danos','criar')){ toast('Não tem permissão para registar ocorrências.','err'); return; }
   const materialNome = document.getElementById('ocMaterial').value.trim();
   if(!materialNome){ toast('Indique o material','err'); return; }
   DB.ocorrencias.push({
@@ -3716,6 +3847,7 @@ function viewOcorrencia(id){
   `, `<button class="btn btn-brand" onclick="closeModal()">Fechar</button>`);
 }
 function delOcorrencia(id){
+  if(!hasPerm('danos','eliminar')){ toast('Não tem permissão para eliminar ocorrências.','err'); return; }
   if(!confirm('Remover esta ocorrência?')) return;
   DB.ocorrencias = DB.ocorrencias.filter(x=>x.id!==id); saveDB(); renderDanosBody();
 }
@@ -3918,26 +4050,26 @@ function renderConfig(){
           <div class="field"><label>NIF</label><input id="cfNif" value="${escapeHtml(cfg.empresa.nif)}"></div>
           <div class="field"><label>Endereço</label><input id="cfEndereco" value="${escapeHtml(cfg.empresa.endereco)}"></div>
         </div>
-        <button class="btn btn-brand" onclick="saveConfigEmpresa()">Guardar dados da empresa</button>
+        ${hasPerm('config','editar')? `<button class="btn btn-brand" onclick="saveConfigEmpresa()">Guardar dados da empresa</button>` : `<p style="font-size:11px;color:var(--text-mut)">Sem permissão para editar.</p>`}
       </div>
       <div class="card">
         <h3 style="margin-bottom:12px">💱 Financeiro & Aparência</h3>
-        <div class="field"><label><input type="checkbox" id="cfRetencaoAtiva" ${cfg.retencaoFonte.ativo?'checked':''}> Aplicar Retenção na Fonte por padrão (prestação de serviços)</label></div>
+        <div class="field"><label><input type="checkbox" id="cfRetencaoAtiva" ${cfg.retencaoFonte.ativo?'checked':''} ${hasPerm('config','editar')?'':'disabled'}> Aplicar Retenção na Fonte por padrão (prestação de serviços)</label></div>
         <div class="form-row">
-          <div class="field"><label>Percentual de Retenção (%)</label><input type="number" step="0.1" id="cfRetencaoPerc" value="${cfg.retencaoFonte.percentual}"></div>
-          <div class="field"><label>Moeda</label><input id="cfMoeda" value="${escapeHtml(cfg.moeda)}"></div>
+          <div class="field"><label>Percentual de Retenção (%)</label><input type="number" step="0.1" id="cfRetencaoPerc" value="${cfg.retencaoFonte.percentual}" ${hasPerm('config','editar')?'':'disabled'}></div>
+          <div class="field"><label>Moeda</label><input id="cfMoeda" value="${escapeHtml(cfg.moeda)}" ${hasPerm('config','editar')?'':'disabled'}></div>
         </div>
         <div class="field"><label>Tema</label>
-          <select id="cfTema">
+          <select id="cfTema" ${hasPerm('config','editar')?'':'disabled'}>
             <option value="light" ${cfg.tema==='light'?'selected':''}>Claro</option>
             <option value="dark" ${cfg.tema==='dark'?'selected':''}>Escuro</option>
           </select>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
         <h4 style="margin-bottom:8px">🏦 Dados Bancários (aparecem na Factura Proforma)</h4>
-        <div class="field"><label>IBAN</label><input id="cfIban" value="${escapeHtml(cfg.iban)}"></div>
-        <div class="field"><label>Destinatário / Titular da conta</label><input id="cfDestinatario" value="${escapeHtml(cfg.destinatario)}"></div>
-        <button class="btn btn-brand" onclick="saveConfigGeral()">Guardar configurações</button>
+        <div class="field"><label>IBAN</label><input id="cfIban" value="${escapeHtml(cfg.iban)}" ${hasPerm('config','editar')?'':'disabled'}></div>
+        <div class="field"><label>Destinatário / Titular da conta</label><input id="cfDestinatario" value="${escapeHtml(cfg.destinatario)}" ${hasPerm('config','editar')?'':'disabled'}></div>
+        ${hasPerm('config','editar')? `<button class="btn btn-brand" onclick="saveConfigGeral()">Guardar configurações</button>` : ''}
       </div>
       <div class="card">
         <h3 style="margin-bottom:12px">💾 Backup</h3>
@@ -3948,13 +4080,14 @@ function renderConfig(){
       <div class="card">
         <h3 style="margin-bottom:12px">👤 Utilizadores</h3>
         <div id="cfUsersList"></div>
-        <button class="btn btn-brand btn-sm" style="margin-top:10px" onclick="openUserForm()">+ Novo Utilizador</button>
+        ${currentUserObj()?.tipo==='admin'? `<button class="btn btn-brand btn-sm" style="margin-top:10px" onclick="openUserForm()">+ Novo Utilizador</button>` : `<p style="font-size:11.5px;color:var(--text-mut)">Apenas administradores podem gerir utilizadores e permissões.</p>`}
       </div>
     </div>
   `;
   renderUsersList();
 }
 function saveConfigEmpresa(){
+  if(!hasPerm('config','editar')){ toast('Não tem permissão para alterar as configurações.','err'); return; }
   DB.config.empresa = {
     nome: document.getElementById('cfNome').value.trim() || 'Yolandia Decorações',
     telefone: document.getElementById('cfTelefone').value.trim(),
@@ -3965,6 +4098,7 @@ function saveConfigEmpresa(){
   saveDB(); toast('Dados da empresa atualizados.','ok');
 }
 function saveConfigGeral(){
+  if(!hasPerm('config','editar')){ toast('Não tem permissão para alterar as configurações.','err'); return; }
   DB.config.retencaoFonte.ativo = document.getElementById('cfRetencaoAtiva').checked;
   DB.config.retencaoFonte.percentual = Number(document.getElementById('cfRetencaoPerc').value)||6.5;
   DB.config.moeda = document.getElementById('cfMoeda').value.trim()||'AOA';
@@ -3996,52 +4130,120 @@ function importBackup(input){
   reader.readAsText(f);
 }
 function renderUsersList(){
+  const souAdmin = currentUserObj()?.tipo==='admin';
   document.getElementById('cfUsersList').innerHTML = DB.users.map(u=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
       <span><b>${escapeHtml(u.nome)}</b> <span class="badge muted">${u.tipo}</span> ${u.ativo===false?'<span class="badge danger">Inativa</span>':'<span class="badge ok">Ativa</span>'}<br><span style="font-size:11px;color:var(--text-mut)">${escapeHtml(u.user)} ${u.email?'· '+escapeHtml(u.email):''}</span></span>
-      <span style="display:flex;gap:6px"><button class="btn btn-sm" onclick="openUserForm('${u.id}')">✎</button><button class="btn btn-sm btn-danger" onclick="delUser('${u.id}')">🗑</button></span>
+      ${souAdmin? `<span style="display:flex;gap:6px"><button class="btn btn-sm" onclick="openUserForm('${u.id}')">✎</button><button class="btn btn-sm btn-danger" onclick="delUser('${u.id}')">🗑</button></span>` : ''}
     </div>`).join('');
 }
+function renderPermissoesFormHtml(permissoes, tipo){
+  const rows = PERM_MODULES.map(m=>{
+    const p = permissoes[m.id] || {};
+    const checks = m.levels.map(l=>`
+      <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-mut);font-weight:600;white-space:nowrap">
+        <input type="checkbox" class="usPermCheck" data-modulo="${m.id}" data-nivel="${l}" ${p[l]?'checked':''}>
+        ${PERM_LEVEL_LABELS[l]}
+      </label>`).join('');
+    return `
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--surface-2)">
+        <div style="min-width:150px;font-weight:700;font-size:12.5px">${m.ic} ${m.label}</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">${checks}</div>
+      </div>`;
+  }).join('');
+  return `
+    <div id="usPermissoesBox">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h4 style="font-size:13.5px">Permissões de Acesso</h4>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-sm btn-turq" onclick="setTodasPermissoesForm(true)">Selecionar todos</button>
+          <button type="button" class="btn btn-sm btn-danger" onclick="setTodasPermissoesForm(false)">Remover todas</button>
+        </div>
+      </div>
+      ${rows}
+      <p style="font-size:11px;color:var(--text-mut);margin-top:4px">"Visualizar" controla se o módulo aparece no menu lateral do funcionário. Sem essa permissão, o módulo fica completamente inacessível (inclusive por navegação directa).</p>
+    </div>
+    <p id="usPermissoesAdminNote" style="display:none;font-size:12px;color:var(--text-mut);padding:10px;background:var(--surface-2);border-radius:10px">🔓 Administradores têm sempre acesso completo a todos os módulos, independentemente das permissões abaixo.</p>
+  `;
+}
+function setTodasPermissoesForm(valor){
+  document.querySelectorAll('.usPermCheck').forEach(chk=>{ chk.checked = valor; });
+}
+function toggleTipoUsuarioPermissoesVisibility(){
+  const tipo = document.getElementById('usTipo').value;
+  const box = document.getElementById('usPermissoesBox');
+  const note = document.getElementById('usPermissoesAdminNote');
+  if(!box || !note) return;
+  box.style.display = tipo==='admin' ? 'none' : 'block';
+  note.style.display = tipo==='admin' ? 'block' : 'none';
+}
 function openUserForm(id){
-  const u = id? DB.users.find(x=>x.id===id) : {id:null, nome:'', user:'', email:'', tipo:'funcionario', ativo:true};
+  if(currentUserObj()?.tipo!=='admin'){ toast('Apenas administradores podem gerir utilizadores.','err'); return; }
+  const u = id? DB.users.find(x=>x.id===id) : {id:null, nome:'', user:'', email:'', telefone:'', cargo:'', tipo:'funcionario', ativo:true, permissoes: defaultPermissoes(false)};
+  const permissoes = u.permissoes || defaultPermissoes(false);
   openModal(id?'Editar Utilizador':'Novo Utilizador', `
+    <h4 style="font-size:13.5px;margin-bottom:8px">Dados do Utilizador</h4>
     <div class="field"><label>Nome completo</label><input id="usNome" value="${escapeHtml(u.nome)}"></div>
     <div class="form-row">
       <div class="field"><label>Nome de utilizador</label><input id="usUser" value="${escapeHtml(u.user)}"></div>
       <div class="field"><label>Email (opcional, pode ser usado para login)</label><input id="usEmail" value="${escapeHtml(u.email||'')}"></div>
     </div>
     <div class="form-row">
-      <div class="field"><label>${id?'Nova senha (deixe vazio para manter a atual)':'Senha'}</label><input id="usPass" type="password"></div>
-      <div class="field"><label>Perfil</label><select id="usTipo">
+      <div class="field"><label>Telefone</label><input id="usTelefone" value="${escapeHtml(u.telefone||'')}"></div>
+      <div class="field"><label>Cargo/Função</label><input id="usCargo" value="${escapeHtml(u.cargo||'')}" placeholder="ex: Assistente de Eventos"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>${id?'Nova senha (deixe vazio para manter a atual)':'Palavra-passe'}</label><input id="usPass" type="password"></div>
+      <div class="field"><label>Perfil</label><select id="usTipo" onchange="toggleTipoUsuarioPermissoesVisibility()">
         <option value="funcionario" ${u.tipo==='funcionario'?'selected':''}>Funcionário</option>
         <option value="admin" ${u.tipo==='admin'?'selected':''}>Administrador</option>
       </select></div>
     </div>
-    <div class="field"><label><input type="checkbox" id="usAtivo" ${u.ativo!==false?'checked':''}> Conta ativa (permite login)</label></div>
-  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveUser('${u.id||''}')">Guardar</button>`);
+    <div class="field"><label><input type="checkbox" id="usAtivo" ${u.ativo!==false?'checked':''}> Estado: Conta ativa (permite login)</label></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+    ${renderPermissoesFormHtml(permissoes, u.tipo)}
+  `, `<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-brand" onclick="saveUser('${u.id||''}')">Guardar Utilizador</button>`, true);
+  setTimeout(toggleTipoUsuarioPermissoesVisibility, 0);
+}
+function coletarPermissoesDoForm(){
+  const perms = defaultPermissoes(false);
+  document.querySelectorAll('.usPermCheck').forEach(chk=>{
+    const modulo = chk.dataset.modulo, nivel = chk.dataset.nivel;
+    if(!perms[modulo]) perms[modulo] = {};
+    perms[modulo][nivel] = chk.checked;
+  });
+  return perms;
 }
 function saveUser(id){
+  if(currentUserObj()?.tipo!=='admin'){ toast('Apenas administradores podem gerir utilizadores.','err'); return; }
   const nome = document.getElementById('usNome').value.trim();
   const user = document.getElementById('usUser').value.trim();
   const email = document.getElementById('usEmail').value.trim();
+  const telefone = document.getElementById('usTelefone').value.trim();
+  const cargo = document.getElementById('usCargo').value.trim();
   const pass = document.getElementById('usPass').value;
   const tipo = document.getElementById('usTipo').value;
   const ativo = document.getElementById('usAtivo').checked;
+  const permissoes = coletarPermissoesDoForm();
   if(!nome || !user){ toast('Preencha o nome e o nome de utilizador.','err'); return; }
-  if(!id && !pass){ toast('Defina uma senha para o novo utilizador.','err'); return; }
+  if(!id && !pass){ toast('Defina uma palavra-passe para o novo utilizador.','err'); return; }
   const jaExiste = DB.users.find(x=>x.user.toLowerCase()===user.toLowerCase() && x.id!==id);
   if(jaExiste){ toast('Já existe um utilizador com este nome de utilizador.','err'); return; }
   if(id){
     const existing = DB.users.find(x=>x.id===id);
-    existing.nome=nome; existing.user=user; existing.email=email; existing.tipo=tipo; existing.ativo=ativo;
+    existing.nome=nome; existing.user=user; existing.email=email; existing.telefone=telefone; existing.cargo=cargo;
+    existing.tipo=tipo; existing.ativo=ativo; existing.permissoes=permissoes;
     if(pass) existing.senhaHash = simpleHash(pass);
+    saveDB(); closeModal(); renderUsersList();
+    toast('Utilizador atualizado e permissões guardadas.','ok');
   } else {
-    DB.users.push({id:uid('u'), nome, user, email, senhaHash: simpleHash(pass), tipo, ativo});
+    DB.users.push({id:uid('u'), nome, user, email, telefone, cargo, senhaHash: simpleHash(pass), tipo, ativo, permissoes});
+    saveDB(); closeModal(); renderUsersList();
+    toast('Utilizador criado com sucesso e permissões de acesso configuradas.','ok');
   }
-  saveDB(); closeModal(); renderUsersList();
-  toast('Utilizador guardado. Já pode iniciar sessão com estas credenciais.','ok');
 }
 function delUser(id){
+  if(currentUserObj()?.tipo!=='admin'){ toast('Apenas administradores podem gerir utilizadores.','err'); return; }
   if(DB.users.length<=1){ toast('É necessário manter pelo menos um utilizador.','err'); return; }
   if(!confirm('Remover este utilizador?')) return;
   DB.users = DB.users.filter(x=>x.id!==id); saveDB(); renderUsersList();
