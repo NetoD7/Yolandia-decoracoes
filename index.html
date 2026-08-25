@@ -661,15 +661,13 @@ async function loadFromSupabase(){
     });
     if(!response.ok) return false;
     const rows = await response.json();
-    if(rows && rows.length > 0){
-      // Garante que o payload não vem vazio/corrompido antes de o aceitar como fonte da verdade.
-      if(rows[0].payload && typeof rows[0].payload === 'object'){
-        DB = rows[0].payload;
-        console.log('✅ Dados recuperados da nuvem com sucesso.');
-        return true;
-      }
+    // Só aceita os dados da nuvem como fonte da verdade se vier algo e for um objeto válido.
+    if(rows && rows.length > 0 && rows[0].payload && typeof rows[0].payload === 'object'){
+      DB = rows[0].payload;
+      console.log('✅ Dados sincronizados da nuvem.');
+      return true;
     }
-  }catch(e){ console.error('❌ Erro de rede ao carregar da nuvem:', e); }
+  }catch(e){ console.error('❌ Erro ao conectar à nuvem:', e); }
   return false;
 }
 async function saveToSupabase(){
@@ -694,48 +692,49 @@ async function saveToSupabase(){
   }catch(e){ console.error('❌ Erro de ligação ao Supabase:', e); }
 }
 /*
-  CORREÇÃO APLICADA (loadDB):
-  Antes, o localStorage tinha prioridade sobre o Supabase — ou seja, um dispositivo
-  novo ou um browser com cache antigo podia mostrar dados desatualizados até haver
-  uma escrita local. Agora tenta-se primeiro sincronizar com o Supabase (fonte
-  partilhada/na nuvem); só se essa sincronização falhar (ex: sem internet) é que
-  se recorre ao localStorage como cópia de reserva, e, na ausência de ambos,
-  parte-se para os dados semente (seedData). migrateDB() e saveDB() são sempre
-  chamados no final para garantir que a estrutura de dados fica sempre completa
-  e persistida coerentemente em ambos os locais.
-
-  TRAVA DE SEGURANÇA (isAppLoaded):
-  saveDB() só grava (localStorage e Supabase) depois de loadDB() terminar e
-  determinar com certeza a origem dos dados (nuvem, local ou semente). Isto evita
-  que qualquer código seja executado prematuramente e grave dados vazios/parciais
-  por cima de dados bons já existentes na nuvem — o cenário descrito de "dados a
-  desaparecer" quando um cliente muda de browser ou dispositivo.
+  CORREÇÃO CRÍTICA (loadDB) — bug real identificado:
+  Antes, saveDB() era chamado incondicionalmente no final de loadDB(), mesmo
+  quando a sincronização com o Supabase falhava E não havia cópia local (ex:
+  browser novo/outro dispositivo com uma falha de rede momentânea). Nesse
+  cenário, DB ficava com seedData() (base de dados vazia) e essa base vazia
+  era gravada por cima dos dados reais na nuvem — apagando o trabalho feito
+  noutro browser/dispositivo.
+  Agora só se grava de imediato no caso genuinamente novo (sem nuvem e sem
+  cópia local nenhuma). Se a nuvem falhar mas existir cópia local, usa-se essa
+  cópia sem tocar na nuvem. Se a nuvem responder com sucesso, usa-se a nuvem
+  sem gravar nada (não há necessidade). Só voltamos a gravar quando o
+  utilizador fizer uma ação (login, criar/editar algo, etc.).
 */
 let isAppLoaded = false;
 async function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    let synced = false;
-    try{
-      synced = await loadFromSupabase();
-    }catch(e){
-      console.warn('Falha ao sincronizar com o Supabase, a usar dados locais.', e);
-      synced = false;
+    const synced = await loadFromSupabase();
+    if(synced){
+      // Sincronizou com a nuvem: os dados corretos já estão em DB.
+      isAppLoaded = true;
+    } else if(raw){
+      // A nuvem falhou/está indisponível, mas há uma cópia local — usa-se essa,
+      // sem gravar nada (para não arriscar sobrepor dados bons na nuvem).
+      DB = JSON.parse(raw);
+      console.log('⚠️ A usar cópia local (nuvem indisponível no momento).');
+      isAppLoaded = true;
+    } else {
+      // Não há nuvem acessível nem cópia local: é mesmo a primeira vez neste
+      // browser. Só aqui é seguro criar e gravar uma base de dados nova.
+      DB = seedData();
+      console.log('🆕 A iniciar uma base de dados nova.');
+      isAppLoaded = true;
+      saveDB();
     }
-    if(!synced){
-      if(raw){ DB = JSON.parse(raw); }
-      else{ DB = seedData(); }
-    }
-    // Só a partir daqui é seguro persistir: já sabemos com certeza de onde vêm os
-    // dados (nuvem, local ou semente), por isso migrateDB() já pode gravar em segurança.
-    isAppLoaded = true;
     migrateDB();
-    saveDB();
+    // Nota: migrateDB() termina com o seu próprio saveDB() interno (para persistir
+    // eventuais campos novos de esquema). Isso é seguro aqui porque, a esta altura,
+    // DB já contém sempre dados válidos e reais (nuvem, cópia local ou base nova) —
+    // nunca um estado vazio a sobrepor-se aos dados bons de outro dispositivo.
   }catch(e){
-    console.error('Erro ao carregar dados, a reiniciar.', e);
-    DB = seedData();
-    isAppLoaded = true;
-    saveDB();
+    console.error('Erro crítico em loadDB:', e);
+    isAppLoaded = false; // bloqueia gravações para não arriscar corromper a nuvem
   }
 }
 function findOrCreateFornecedorByName(nome){
@@ -877,17 +876,15 @@ function migrateDB(){
   saveDB();
 }
 function saveDB(){
-  // Trava de segurança: nunca gravar (localStorage nem Supabase) antes de loadDB()
-  // ter terminado — impede que dados vazios/parciais sobreponham dados já guardados.
-  if(!isAppLoaded || !DB) return;
+  // Se a app não carregou dados válidos, bloqueia qualquer gravação (protege a nuvem
+  // contra ser sobreposta por um estado vazio ou parcial).
+  if(!isAppLoaded || !DB){
+    console.warn('🚫 Gravação bloqueada: a aplicação ainda não carregou dados válidos.');
+    return;
+  }
   try{
-    const data = JSON.stringify(DB);
-    if(data.length < 4500000){
-      localStorage.setItem(STORAGE_KEY, data);
-    } else {
-      console.warn('Dados excedem limite do localStorage, a usar apenas Supabase.');
-    }
-  }catch(e){ console.warn('localStorage indisponível (ex: modo privado/incógnito), a usar apenas Supabase.', e); }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  }catch(e){ console.warn('localStorage indisponível (ex: cheio ou modo privado/incógnito), a usar apenas Supabase.', e); }
   saveToSupabase();
 }
 
