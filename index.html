@@ -680,7 +680,13 @@ async function saveToSupabase(){
       },
       body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
     });
-    if(!response.ok){ throw new Error('Falha ao guardar no Supabase'); }
+    if(!response.ok){
+      // Regista o erro devolvido pelo Supabase (ex: política RLS a bloquear a escrita)
+      // para que seja possível diagnosticar no console porque a sincronização falhou.
+      let detalhe = '';
+      try{ detalhe = await response.json(); }catch(e2){ detalhe = await response.text().catch(()=>''); }
+      console.error('Erro Supabase ao guardar (verifique as políticas RLS da tabela app_state):', response.status, detalhe);
+    }
   }catch(e){ console.warn('Não foi possível sincronizar com o Supabase.', e); }
 }
 /*
@@ -693,7 +699,15 @@ async function saveToSupabase(){
   parte-se para os dados semente (seedData). migrateDB() e saveDB() são sempre
   chamados no final para garantir que a estrutura de dados fica sempre completa
   e persistida coerentemente em ambos os locais.
+
+  TRAVA DE SEGURANÇA (isAppLoaded):
+  saveDB() só grava (localStorage e Supabase) depois de loadDB() terminar e
+  determinar com certeza a origem dos dados (nuvem, local ou semente). Isto evita
+  que qualquer código seja executado prematuramente e grave dados vazios/parciais
+  por cima de dados bons já existentes na nuvem — o cenário descrito de "dados a
+  desaparecer" quando um cliente muda de browser ou dispositivo.
 */
+let isAppLoaded = false;
 async function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -708,11 +722,16 @@ async function loadDB(){
       if(raw){ DB = JSON.parse(raw); }
       else{ DB = seedData(); }
     }
+    // Só a partir daqui é seguro persistir: já sabemos com certeza de onde vêm os
+    // dados (nuvem, local ou semente), por isso migrateDB() já pode gravar em segurança.
+    isAppLoaded = true;
     migrateDB();
     saveDB();
   }catch(e){
     console.error('Erro ao carregar dados, a reiniciar.', e);
-    DB = seedData(); saveDB();
+    DB = seedData();
+    isAppLoaded = true;
+    saveDB();
   }
 }
 function findOrCreateFornecedorByName(nome){
@@ -854,6 +873,9 @@ function migrateDB(){
   saveDB();
 }
 function saveDB(){
+  // Trava de segurança: nunca gravar (localStorage nem Supabase) antes de loadDB()
+  // ter terminado — impede que dados vazios/parciais sobreponham dados já guardados.
+  if(!isAppLoaded || !DB) return;
   try{
     const data = JSON.stringify(DB);
     if(data.length < 4500000){
@@ -861,7 +883,7 @@ function saveDB(){
     } else {
       console.warn('Dados excedem limite do localStorage, a usar apenas Supabase.');
     }
-  }catch(e){ console.warn('localStorage indisponível, a usar Supabase.', e); }
+  }catch(e){ console.warn('localStorage indisponível (ex: modo privado/incógnito), a usar apenas Supabase.', e); }
   saveToSupabase();
 }
 
