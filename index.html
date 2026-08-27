@@ -659,21 +659,37 @@ async function loadFromSupabase(){
         'Content-Type':'application/json'
       }
     });
-    if(!response.ok) return false;
+    if(!response.ok) throw new Error('Erro na resposta da rede');
     const rows = await response.json();
-    // Só aceita os dados da nuvem como fonte da verdade se vier algo e for um objeto válido.
-    if(rows && rows.length > 0 && rows[0].payload && typeof rows[0].payload === 'object'){
-      DB = rows[0].payload;
-      console.log('✅ Dados sincronizados da nuvem.');
-      return true;
+    // Verificação robusta: só aceita se houver payload com dados reais (ex: utilizadores).
+    if(rows && rows.length > 0 && rows[0].payload){
+      const data = rows[0].payload;
+      if(data.users && data.users.length > 0){
+        DB = data;
+        console.log('✅ Dados carregados com sucesso da nuvem.');
+        return true;
+      }
     }
-  }catch(e){ console.error('❌ Erro ao conectar à nuvem:', e); }
+  }catch(e){
+    console.error('❌ Falha ao carregar do Supabase:', e);
+    cloudFailed = true;
+  }
   return false;
 }
 async function saveToSupabase(){
-  if(!DB || !isAppLoaded) return; // segunda barreira: nunca grava se a app ainda não carregou
+  // Bloqueio de segurança: nunca grava se a app não carregou dados válidos, ou se
+  // houve falha de ligação confirmada no arranque (evita sobrepor dados reais com vazio).
+  if(!isAppLoaded || !DB || cloudFailed){
+    console.warn('🚫 Gravação bloqueada para evitar sobrescrever dados reais com vazio.');
+    return;
+  }
+  const timestamp = new Date().toISOString();
+  // Data local (não UTC) — em Angola (UTC+1), perto da meia-noite o UTC ainda estaria
+  // no "dia anterior", o que etiquetaria o backup diário com a data errada.
+  const dataHoje = new Date().toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD
   try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+    // --- Ação 1: atualizar o registo principal (o que a app lê ao abrir) ---
+    const respMain = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
       headers:{
         'apikey': SUPABASE_ANON_KEY,
@@ -681,60 +697,77 @@ async function saveToSupabase(){
         'Content-Type':'application/json',
         'Prefer':'resolution=merge-duplicates'
       },
-      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: new Date().toISOString()})
+      body: JSON.stringify({id:'yolandia_main', payload: DB, updated_at: timestamp})
     });
-    if(response.ok){
-      console.log('☁️ Sincronizado com a nuvem.');
-    } else {
-      const errorMsg = await response.text();
-      console.error('❌ Falha na sincronização com o Supabase (verifique as políticas RLS da tabela app_state):', response.status, errorMsg);
+    if(!respMain.ok){
+      const errorMsg = await respMain.text();
+      console.error('❌ Falha na sincronização principal com o Supabase (verifique as políticas RLS da tabela app_state):', respMain.status, errorMsg);
     }
-  }catch(e){ console.error('❌ Erro de ligação ao Supabase:', e); }
+    // --- Ação 2: criar/atualizar o backup diário (histórico de segurança) ---
+    // Uma linha por dia, atualizada ao longo do dia. No dia seguinte, este backup
+    // fica "congelado" como o estado final desse dia — permite recuperar dados
+    // de dias anteriores caso algo seja apagado ou corrompido por engano.
+    const respBackup = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+      method:'POST',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({id:`yolandia_backup_${dataHoje}`, payload: DB, updated_at: timestamp})
+    });
+    if(!respBackup.ok){
+      const errorMsg = await respBackup.text();
+      console.error('❌ Falha ao criar o backup diário no Supabase:', respBackup.status, errorMsg);
+    }
+    if(respMain.ok){
+      console.log(`☁️ Sincronizado e backup diário atualizado (${dataHoje}).`);
+    }
+  }catch(e){ console.error('❌ Erro de ligação ao tentar guardar na nuvem:', e); }
 }
 /*
-  CORREÇÃO CRÍTICA (loadDB) — bug real identificado:
-  Antes, saveDB() era chamado incondicionalmente no final de loadDB(), mesmo
-  quando a sincronização com o Supabase falhava E não havia cópia local (ex:
-  browser novo/outro dispositivo com uma falha de rede momentânea). Nesse
-  cenário, DB ficava com seedData() (base de dados vazia) e essa base vazia
-  era gravada por cima dos dados reais na nuvem — apagando o trabalho feito
-  noutro browser/dispositivo.
-  Agora só se grava de imediato no caso genuinamente novo (sem nuvem e sem
-  cópia local nenhuma). Se a nuvem falhar mas existir cópia local, usa-se essa
-  cópia sem tocar na nuvem. Se a nuvem responder com sucesso, usa-se a nuvem
-  sem gravar nada (não há necessidade). Só voltamos a gravar quando o
-  utilizador fizer uma ação (login, criar/editar algo, etc.).
+  CORREÇÃO CRÍTICA (loadDB) — distinção entre "nuvem confirmou que não há dados"
+  e "nuvem falhou/está inacessível":
+  Sem esta distinção, uma falha de rede transitória (não uma tabela genuinamente
+  vazia) num browser sem cópia local levava a criar e a gravar uma base de dados
+  vazia — podendo sobrepor-se a dados reais assim que a rede voltasse. Agora:
+  - Nuvem respondeu com sucesso mas confirma que não há registo (cloudFailed=false
+    e sem dados) → é mesmo uma instalação nova, seguro criar e gravar.
+  - Nuvem falhou a responder (erro de rede/servidor, cloudFailed=true) e não há
+    cópia local → bloqueia-se a app em vez de arriscar perder dados.
 */
 let isAppLoaded = false;
+let cloudFailed = false;
 async function loadDB(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
     const synced = await loadFromSupabase();
+    const rawLocal = localStorage.getItem(STORAGE_KEY);
     if(synced){
-      // Sincronizou com a nuvem: os dados corretos já estão em DB.
+      // Caso 1: sincronizou com sucesso a partir da nuvem.
       isAppLoaded = true;
-    } else if(raw){
-      // A nuvem falhou/está indisponível, mas há uma cópia local — usa-se essa,
-      // sem gravar nada (para não arriscar sobrepor dados bons na nuvem).
-      DB = JSON.parse(raw);
-      console.log('⚠️ A usar cópia local (nuvem indisponível no momento).');
+    } else if(rawLocal){
+      // Caso 2: a nuvem falhou ou não devolveu dados válidos, mas há cópia local — usa-se essa.
+      DB = JSON.parse(rawLocal);
       isAppLoaded = true;
-    } else {
-      // Não há nuvem acessível nem cópia local: é mesmo a primeira vez neste
-      // browser. Só aqui é seguro criar e gravar uma base de dados nova.
+      console.warn('⚠️ A usar cópia local. Sincronização com a nuvem pendente.');
+    } else if(!cloudFailed){
+      // Caso 3: a nuvem respondeu (está online), mas confirma que o registo não existe —
+      // é mesmo a primeira instalação. Só aqui é seguro criar e gravar de imediato.
+      console.log('🆕 A criar base de dados nova (primeira instalação).');
       DB = seedData();
-      console.log('🆕 A iniciar uma base de dados nova.');
       isAppLoaded = true;
       saveDB();
+    } else {
+      // Caso 4: a nuvem falhou a responder E não há cópia local neste dispositivo.
+      // Bloqueia-se a inicialização para não arriscar apagar dados por erro de ligação.
+      console.error('🚫 Erro crítico de ligação: sem dados na nuvem nem cópia local.');
+      alert('Erro crítico de ligação: não foi possível carregar os seus dados. Verifique a internet e recarregue a página.');
+      return; // DB fica null — init() deteta isto e bloqueia a interface, em vez de continuar partido.
     }
     migrateDB();
-    // Nota: migrateDB() termina com o seu próprio saveDB() interno (para persistir
-    // eventuais campos novos de esquema). Isso é seguro aqui porque, a esta altura,
-    // DB já contém sempre dados válidos e reais (nuvem, cópia local ou base nova) —
-    // nunca um estado vazio a sobrepor-se aos dados bons de outro dispositivo.
   }catch(e){
     console.error('Erro crítico em loadDB:', e);
-    isAppLoaded = false; // bloqueia gravações para não arriscar corromper a nuvem
   }
 }
 function findOrCreateFornecedorByName(nome){
@@ -876,10 +909,15 @@ function migrateDB(){
   saveDB();
 }
 function saveDB(){
-  // Se a app não carregou dados válidos, bloqueia qualquer gravação (protege a nuvem
-  // contra ser sobreposta por um estado vazio ou parcial).
+  // Nunca grava se a app não carregou dados válidos (proteção contra apagar a nuvem
+  // com um estado vazio). Nota: NÃO se usa aqui o `cloudFailed` global — esse serve
+  // apenas para a decisão pontual dentro de loadDB() (criar base nova ou bloquear).
+  // Se o usássemos aqui também, uma única falha de rede no arranque bloquearia
+  // TODAS as gravações futuras da sessão (nem sequer no localStorage), mesmo depois
+  // de se recuperar com sucesso a cópia local no Caso 2 — pior do que o problema
+  // original que estamos a corrigir.
   if(!isAppLoaded || !DB){
-    console.warn('🚫 Gravação bloqueada: a aplicação ainda não carregou dados válidos.');
+    console.warn('🚫 Gravação abortada: sistema em modo de segurança (proteção contra perda de dados).');
     return;
   }
   try{
@@ -4283,6 +4321,26 @@ document.getElementById('yrNow').textContent = new Date().getFullYear();
 
 async function init(){
   await loadDB();
+  if(!DB){
+    // Falha crítica de ligação (ver loadDB, Caso 4): sem dados na nuvem nem cópia
+    // local. Em vez de deixar a app continuar e rebentar (applyTheme, login, etc.
+    // dependem todos de DB existir), mostra-se um ecrã de erro claro e persistente
+    // com opção de tentar novamente, e a inicialização para aqui.
+    const ls = document.getElementById('loginScreen');
+    if(ls){
+      ls.innerHTML = `<div class="login-card" style="text-align:center">
+        <div style="font-size:40px;margin-bottom:6px">🚫</div>
+        <h1 style="color:var(--danger)">Erro de ligação</h1>
+        <p style="color:var(--text-mut);font-size:13px;margin:14px 0;line-height:1.5">
+          Não foi possível carregar os seus dados — sem acesso à nuvem e sem cópia local
+          neste dispositivo. Por segurança, a aplicação não continua, para evitar perda
+          de informação. Verifique a sua ligação à internet e tente novamente.
+        </p>
+        <button class="btn-primary" onclick="location.reload()">🔄 Tentar novamente</button>
+      </div>`;
+    }
+    return;
+  }
   loadLogoPng();
   applyTheme();
   if(DB.currentUser && DB.users.find(u=>u.id===DB.currentUser)){
