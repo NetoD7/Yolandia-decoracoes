@@ -148,6 +148,7 @@ input,select,textarea{font-family:inherit; transition:border-color .15s ease, bo
   width:36px; height:36px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface-2);
   display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--text);
 }
+@keyframes spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
 .user-chip{display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:20px; background:var(--surface-2); font-size:12.5px; font-weight:600;}
 .user-chip .av{width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--rosa),var(--amarelo)); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:12px;}
 
@@ -348,6 +349,7 @@ tbody tr:hover{background:var(--surface-2);}
     <div class="topbar no-print">
       <h2 id="pageTitle">Dashboard</h2>
       <div class="topbar-actions">
+        <button class="icon-btn" onclick="forceSync()" title="Sincronizar com a Nuvem" id="syncBtn">🔄</button>
         <button class="icon-btn" onclick="toggleTheme()" title="Alternar tema">🌗</button>
         <button class="icon-btn" onclick="doLogout()" title="Sair">⎋</button>
         <div class="user-chip"><span class="av" id="userAv">A</span><span id="userLbl">Admin</span></div>
@@ -656,39 +658,61 @@ async function loadFromSupabase(){
       headers:{
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json'
+        'Content-Type':'application/json',
+        'Cache-Control':'no-cache'
       }
     });
     if(!response.ok) throw new Error('Erro na resposta da rede');
     const rows = await response.json();
-    // Verificação robusta: só aceita se houver payload com dados reais (ex: utilizadores).
     if(rows && rows.length > 0 && rows[0].payload){
       const data = rows[0].payload;
-      if(data.users && data.users.length > 0){
+      // Verificação de integridade: só aceita a nuvem como fonte da verdade se tiver
+      // a estrutura mínima válida (nunca deveria haver 0 utilizadores).
+      if(data.config && data.users && data.users.length > 0){
         DB = data;
-        console.log('✅ Dados carregados com sucesso da nuvem.');
+        lastCloudTimestamp = rows[0].updated_at; // guarda a versão lida, para detetar conflitos ao gravar
+        cloudAvailable = true;
+        console.log('✅ Dados sincronizados da nuvem.');
         return true;
       }
     }
   }catch(e){
     console.error('❌ Falha ao carregar do Supabase:', e);
-    cloudFailed = true;
+    cloudFailed = true; // usado por loadDB() para distinguir "nuvem falhou" de "nuvem confirma vazio"
   }
   return false;
 }
 async function saveToSupabase(){
-  // Bloqueio de segurança: nunca grava se a app não carregou dados válidos, ou se
-  // houve falha de ligação confirmada no arranque (evita sobrepor dados reais com vazio).
-  if(!isAppLoaded || !DB || cloudFailed){
-    console.warn('🚫 Gravação bloqueada para evitar sobrescrever dados reais com vazio.');
-    return;
-  }
-  const timestamp = new Date().toISOString();
-  // Data local (não UTC) — em Angola (UTC+1), perto da meia-noite o UTC ainda estaria
-  // no "dia anterior", o que etiquetaria o backup diário com a data errada.
-  const dataHoje = new Date().toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD
+  // Bloqueio de segurança: nunca grava se a app não carregou dados válidos, se a
+  // nuvem não estiver confirmada como disponível nesta sessão, ou se já houver
+  // uma gravação em curso (evita pedidos simultâneos a pisarem-se um ao outro).
+  if(!isAppLoaded || !DB || !cloudAvailable || isSyncing) return;
+  isSyncing = true;
   try{
-    // --- Ação 1: atualizar o registo principal (o que a app lê ao abrir) ---
+    // 1. Verificação de conflito: pergunta à nuvem qual é a versão lá guardada antes
+    //    de gravar. Se for diferente da última que lemos, outro dispositivo gravou
+    //    entretanto — aborta-se e pede-se ao utilizador para sincronizar primeiro,
+    //    em vez de gravar por cima e apagar o trabalho feito no outro dispositivo.
+    const checkResp = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main&select=updated_at`, {
+      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+    });
+    const checkData = await checkResp.json();
+    if(Array.isArray(checkData) && checkData.length > 0 && lastCloudTimestamp && checkData[0].updated_at !== lastCloudTimestamp){
+      isSyncing = false;
+      toast('⚠️ Conflito: outro dispositivo guardou dados novos. Sincronize antes de continuar.', 'err');
+      openModal('🛑 Bloqueio de Segurança', `
+        <p>Outro computador ou telemóvel guardou dados mais recentes enquanto trabalhava aqui.</p>
+        <p><b>Para não apagar o que foi feito no outro dispositivo</b>, sincronize agora antes de continuar a trabalhar.</p>
+      `, `<button class="btn btn-brand" onclick="forceSync(); closeModal();">🔄 Sincronizar e Unir Dados</button>`);
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    // Data local (não UTC) — em Angola (UTC+1), perto da meia-noite o UTC ainda estaria
+    // no "dia anterior", o que etiquetaria o backup diário com a data errada.
+    const dataHoje = new Date().toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD
+
+    // 2. Canal principal: yolandia_main — o registo que a app lê ao abrir e que
+    //    todos os dispositivos partilham.
     const respMain = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
       headers:{
@@ -702,11 +726,15 @@ async function saveToSupabase(){
     if(!respMain.ok){
       const errorMsg = await respMain.text();
       console.error('❌ Falha na sincronização principal com o Supabase (verifique as políticas RLS da tabela app_state):', respMain.status, errorMsg);
+    } else {
+      lastCloudTimestamp = timestamp; // esta é agora a versão mais recente que conhecemos
     }
-    // --- Ação 2: criar/atualizar o backup diário (histórico de segurança) ---
-    // Uma linha por dia, atualizada ao longo do dia. No dia seguinte, este backup
-    // fica "congelado" como o estado final desse dia — permite recuperar dados
-    // de dias anteriores caso algo seja apagado ou corrompido por engano.
+
+    // 3. Canal de backup: uma linha por DIA (não uma por cada gravação). Isto dá a
+    //    mesma proteção contra perda de dados dia a dia, sem encher indefinidamente
+    //    a base de dados do Supabase com uma cópia completa a cada clique — o que,
+    //    com fotografias em base64 guardadas nos materiais, poderia esgotar rápido
+    //    o limite de armazenamento do plano gratuito do Supabase.
     const respBackup = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
       headers:{
@@ -724,7 +752,8 @@ async function saveToSupabase(){
     if(respMain.ok){
       console.log(`☁️ Sincronizado e backup diário atualizado (${dataHoje}).`);
     }
-  }catch(e){ console.error('❌ Erro de ligação ao tentar guardar na nuvem:', e); }
+  }catch(e){ console.error('❌ Erro crítico ao guardar na nuvem:', e); }
+  finally{ isSyncing = false; }
 }
 /*
   CORREÇÃO CRÍTICA (loadDB) — distinção entre "nuvem confirmou que não há dados"
@@ -739,24 +768,40 @@ async function saveToSupabase(){
 */
 let isAppLoaded = false;
 let cloudFailed = false;
+let cloudAvailable = false; // true só quando confirmámos que a nuvem está acessível e válida nesta sessão
+let lastCloudTimestamp = null; // versão da nuvem que lemos por último, para detetar conflitos ao gravar
+let isSyncing = false; // evita gravações simultâneas a pisarem-se uma à outra
 async function loadDB(){
   try{
     const synced = await loadFromSupabase();
     const rawLocal = localStorage.getItem(STORAGE_KEY);
     if(synced){
-      // Caso 1: sincronizou com sucesso a partir da nuvem.
+      // Caso 1: sincronizou com sucesso a partir da nuvem (cloudAvailable já foi
+      // definido como true dentro de loadFromSupabase()).
       isAppLoaded = true;
+      // Mantém a cópia local atualizada com o que veio da nuvem, para que um futuro
+      // Caso 2 (nuvem indisponível) tenha sempre a versão mais recente possível.
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch(e){}
+      // Uma vez por sessão (não a cada gravação), remove backups diários com mais de
+      // 30 dias — mantém um mês de histórico recuperável sem crescer indefinidamente
+      // e sem arriscar esgotar o espaço do plano gratuito do Supabase.
+      limparBackupsAntigos(30);
     } else if(rawLocal){
       // Caso 2: a nuvem falhou ou não devolveu dados válidos, mas há cópia local — usa-se essa.
+      // Gravação na nuvem fica desativada nesta sessão, para não sobrepor dados bons
+      // com esta cópia potencialmente desatualizada — só volta a ativar-se com um
+      // "Sincronizar" manual (forceSync) ou recarregando a página.
       DB = JSON.parse(rawLocal);
       isAppLoaded = true;
-      console.warn('⚠️ A usar cópia local. Sincronização com a nuvem pendente.');
+      cloudAvailable = false;
+      console.warn('⚠️ A usar cópia local. Gravação na nuvem desativada até sincronizar.');
     } else if(!cloudFailed){
       // Caso 3: a nuvem respondeu (está online), mas confirma que o registo não existe —
       // é mesmo a primeira instalação. Só aqui é seguro criar e gravar de imediato.
       console.log('🆕 A criar base de dados nova (primeira instalação).');
       DB = seedData();
       isAppLoaded = true;
+      cloudAvailable = true;
       saveDB();
     } else {
       // Caso 4: a nuvem falhou a responder E não há cópia local neste dispositivo.
@@ -769,6 +814,50 @@ async function loadDB(){
   }catch(e){
     console.error('Erro crítico em loadDB:', e);
   }
+}
+// Sincronização manual: permite a um dispositivo ver o que outro guardou sem
+// precisar de recarregar a página inteira. Também é a forma de reativar a
+// gravação na nuvem depois desta ter ficado desligada por uma falha anterior
+// (Caso 2 do loadDB), ou de resolver um conflito detetado em saveToSupabase().
+// Remove da nuvem os backups diários mais antigos que "diasParaManter", para o
+// histórico não crescer para sempre no plano gratuito do Supabase. Corre em
+// segundo plano (não bloqueia nada) e falha em silêncio se a tabela ainda não
+// tiver a política RLS de DELETE configurada para o role anon — nesse caso os
+// backups antigos simplesmente ficam por apagar até essa política ser criada.
+async function limparBackupsAntigos(diasParaManter){
+  if(!cloudAvailable) return;
+  try{
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (diasParaManter||30));
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=like.yolandia_backup_*&updated_at=lt.${encodeURIComponent(cutoff.toISOString())}`, {
+      method:'DELETE',
+      headers:{
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    if(resp.ok){ console.log(`🧹 Backups com mais de ${diasParaManter||30} dias removidos da nuvem.`); }
+    else{ console.warn('Não foi possível limpar backups antigos (verifique a política RLS de DELETE em app_state).', resp.status); }
+  }catch(e){ console.warn('Falha de ligação ao limpar backups antigos.', e); }
+}
+async function forceSync(){
+  const btn = document.getElementById('syncBtn');
+  if(btn) btn.style.animation = 'spin 1s linear infinite';
+  toast('A procurar dados novos na nuvem...', 'info');
+  const sucesso = await loadFromSupabase();
+  if(sucesso){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch(e){}
+    isAppLoaded = true;
+    cloudAvailable = true;
+    migrateDB();
+    if(currentView && document.getElementById('appShell').classList.contains('active')){
+      navigate(currentView);
+    }
+    toast('Sincronizado! Já tem a versão mais recente.', 'ok');
+  } else {
+    toast('Não foi possível sincronizar. Verifique a ligação à internet.', 'err');
+  }
+  if(btn) btn.style.animation = '';
 }
 function findOrCreateFornecedorByName(nome){
   if(!nome) return '';
