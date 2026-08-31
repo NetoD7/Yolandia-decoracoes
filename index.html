@@ -662,7 +662,14 @@ async function loadFromSupabase(){
         'Cache-Control':'no-cache'
       }
     });
-    if(!response.ok) throw new Error('Erro na resposta da rede');
+    if(!response.ok){
+      // Uma resposta HTTP de erro (ex: 401/403 por RLS mal configurada, 500 do servidor)
+      // NÃO é o mesmo que "a nuvem confirma que está vazia" — é uma falha real, e tem de
+      // ser tratada como tal por loadDB() (senão criaria uma base de dados vazia por cima
+      // de dados que só estão temporariamente inacessíveis).
+      cloudFailed = true;
+      return false;
+    }
     const rows = await response.json();
     if(rows && rows.length > 0 && rows[0].payload){
       const data = rows[0].payload;
@@ -683,29 +690,39 @@ async function loadFromSupabase(){
   return false;
 }
 async function saveToSupabase(){
-  // Bloqueio de segurança: nunca grava se a app não carregou dados válidos, se a
-  // nuvem não estiver confirmada como disponível nesta sessão, ou se já houver
-  // uma gravação em curso (evita pedidos simultâneos a pisarem-se um ao outro).
-  if(!isAppLoaded || !DB || !cloudAvailable || isSyncing) return;
+  // Bloqueio de segurança mínimo: nunca grava se a app não carregou dados válidos,
+  // ou se já houver uma gravação em curso (evita pedidos simultâneos a pisarem-se).
+  // Nota: já não se exige aqui "cloudAvailable" — isso fazia com que UMA falha de
+  // rede no arranque desligasse a gravação na nuvem pelo resto da sessão inteira,
+  // mesmo que a ligação recuperasse segundos depois. Agora cada gravação tenta
+  // sempre; se a rede estiver em baixo naquele instante, falha em silêncio e a
+  // próxima gravação tenta de novo — sem precisar de reload nem de "Sincronizar".
+  if(!isAppLoaded || !DB || isSyncing) return;
   isSyncing = true;
   try{
-    // 1. Verificação de conflito: pergunta à nuvem qual é a versão lá guardada antes
-    //    de gravar. Se for diferente da última que lemos, outro dispositivo gravou
-    //    entretanto — aborta-se e pede-se ao utilizador para sincronizar primeiro,
-    //    em vez de gravar por cima e apagar o trabalho feito no outro dispositivo.
-    const checkResp = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main&select=updated_at`, {
-      headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-    });
-    const checkData = await checkResp.json();
-    if(Array.isArray(checkData) && checkData.length > 0 && lastCloudTimestamp && checkData[0].updated_at !== lastCloudTimestamp){
-      isSyncing = false;
-      toast('⚠️ Conflito: outro dispositivo guardou dados novos. Sincronize antes de continuar.', 'err');
-      openModal('🛑 Bloqueio de Segurança', `
-        <p>Outro computador ou telemóvel guardou dados mais recentes enquanto trabalhava aqui.</p>
-        <p><b>Para não apagar o que foi feito no outro dispositivo</b>, sincronize agora antes de continuar a trabalhar.</p>
-      `, `<button class="btn btn-brand" onclick="forceSync(); closeModal();">🔄 Sincronizar e Unir Dados</button>`);
-      return;
-    }
+    // 1. Verificação de conflito (à prova de rede instável): pergunta à nuvem qual é
+    //    a versão lá guardada antes de gravar por cima. Esta verificação tem o seu
+    //    próprio try/catch — se ELA falhar por causa da rede, não bloqueia a
+    //    gravação principal; assume-se "sem conflito conhecido" e segue-se em
+    //    frente, em vez de perder a gravação inteira por causa de um pedido extra.
+    try{
+      const checkResp = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.yolandia_main&select=updated_at`, {
+        headers:{ 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      if(checkResp.ok){
+        const checkData = await checkResp.json();
+        if(Array.isArray(checkData) && checkData.length > 0 && lastCloudTimestamp && checkData[0].updated_at !== lastCloudTimestamp){
+          isSyncing = false;
+          toast('⚠️ Conflito: outro dispositivo guardou dados novos. Sincronize antes de continuar.', 'err');
+          openModal('🛑 Bloqueio de Segurança', `
+            <p>Outro computador ou telemóvel guardou dados mais recentes enquanto trabalhava aqui.</p>
+            <p><b>Para não apagar o que foi feito no outro dispositivo</b>, sincronize agora antes de continuar a trabalhar.</p>
+          `, `<button class="btn btn-brand" onclick="forceSync(); closeModal();">🔄 Sincronizar e Unir Dados</button>`);
+          return;
+        }
+      }
+    }catch(eCheck){ console.warn('Não foi possível verificar conflitos (rede instável) — a gravar mesmo assim.', eCheck); }
+
     const timestamp = new Date().toISOString();
     // ID único de histórico (ex: hist_2026-08-28T10-30-00-000Z) — nunca é sobrescrito,
     // fica guardado na nuvem permanentemente como prova do estado nesse instante.
@@ -728,6 +745,7 @@ async function saveToSupabase(){
       console.error('❌ Falha na sincronização principal com o Supabase (verifique as políticas RLS da tabela app_state):', respMain.status, errorMsg);
     } else {
       lastCloudTimestamp = timestamp; // esta é agora a versão mais recente que conhecemos
+      cloudAvailable = true; // a gravação principal funcionou — a nuvem está claramente acessível
     }
 
     // 3. Histórico infinito: uma linha NOVA e permanente a cada gravação (nunca
@@ -787,13 +805,14 @@ async function loadDB(){
       // (cada gravação cria uma linha "hist_..." que nunca é apagada).
     } else if(rawLocal){
       // Caso 2: a nuvem falhou ou não devolveu dados válidos, mas há cópia local — usa-se essa.
-      // Gravação na nuvem fica desativada nesta sessão, para não sobrepor dados bons
-      // com esta cópia potencialmente desatualizada — só volta a ativar-se com um
-      // "Sincronizar" manual (forceSync) ou recarregando a página.
+      // Nota: já não se desativa a gravação na nuvem por causa disto — cada gravação
+      // seguinte tenta sempre de novo por si própria (ver saveToSupabase()), por isso
+      // não é preciso nenhuma ação manual para a sincronização voltar assim que a
+      // rede recuperar.
       DB = JSON.parse(rawLocal);
       isAppLoaded = true;
-      cloudAvailable = false;
-      console.warn('⚠️ A usar cópia local. Gravação na nuvem desativada até sincronizar.');
+      console.warn('⚠️ A usar cópia local (nuvem indisponível neste momento).');
+      toast('A usar dados locais (nuvem inacessível no momento).', 'warn');
     } else if(!cloudFailed){
       // Caso 3: a nuvem respondeu (está online), mas confirma que o registo não existe —
       // é mesmo a primeira instalação. Só aqui é seguro criar e gravar de imediato.
@@ -815,9 +834,8 @@ async function loadDB(){
   }
 }
 // Sincronização manual: permite a um dispositivo ver o que outro guardou sem
-// precisar de recarregar a página inteira. Também é a forma de reativar a
-// gravação na nuvem depois desta ter ficado desligada por uma falha anterior
-// (Caso 2 do loadDB), ou de resolver um conflito detetado em saveToSupabase().
+// precisar de recarregar a página inteira. Também é útil para resolver o modal
+// de conflito mostrado por saveToSupabase() quando outro dispositivo gravou primeiro.
 // Remove da nuvem os backups diários mais antigos que "diasParaManter". NÃO É
 // CHAMADA ATUALMENTE em lado nenhum — o histórico passou a ser permanente por
 // pedido explícito. Fica aqui disponível caso um dia se queira voltar a limitar
