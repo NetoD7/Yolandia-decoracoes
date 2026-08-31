@@ -707,9 +707,9 @@ async function saveToSupabase(){
       return;
     }
     const timestamp = new Date().toISOString();
-    // Data local (não UTC) — em Angola (UTC+1), perto da meia-noite o UTC ainda estaria
-    // no "dia anterior", o que etiquetaria o backup diário com a data errada.
-    const dataHoje = new Date().toLocaleDateString('pt-BR').split('/').reverse().join('-'); // YYYY-MM-DD
+    // ID único de histórico (ex: hist_2026-08-28T10-30-00-000Z) — nunca é sobrescrito,
+    // fica guardado na nuvem permanentemente como prova do estado nesse instante.
+    const historyId = `hist_${timestamp.replace(/[:.]/g,'-')}`;
 
     // 2. Canal principal: yolandia_main — o registo que a app lê ao abrir e que
     //    todos os dispositivos partilham.
@@ -730,27 +730,27 @@ async function saveToSupabase(){
       lastCloudTimestamp = timestamp; // esta é agora a versão mais recente que conhecemos
     }
 
-    // 3. Canal de backup: uma linha por DIA (não uma por cada gravação). Isto dá a
-    //    mesma proteção contra perda de dados dia a dia, sem encher indefinidamente
-    //    a base de dados do Supabase com uma cópia completa a cada clique — o que,
-    //    com fotografias em base64 guardadas nos materiais, poderia esgotar rápido
-    //    o limite de armazenamento do plano gratuito do Supabase.
-    const respBackup = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
+    // 3. Histórico infinito: uma linha NOVA e permanente a cada gravação (nunca
+    //    sobrescrita nem apagada), por pedido explícito — mesmo sabendo que isto
+    //    pode aproximar-se do limite de armazenamento gratuito do Supabase com o
+    //    tempo, especialmente havendo fotografias guardadas nos materiais. Vale a
+    //    pena verificar de vez em quando o painel do Supabase (Project Settings →
+    //    Usage) para acompanhar o espaço ocupado.
+    const respHist = await fetch(`${SUPABASE_URL}/rest/v1/app_state`, {
       method:'POST',
       headers:{
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates'
+        'Content-Type':'application/json'
       },
-      body: JSON.stringify({id:`yolandia_backup_${dataHoje}`, payload: DB, updated_at: timestamp})
+      body: JSON.stringify({id: historyId, payload: DB, updated_at: timestamp})
     });
-    if(!respBackup.ok){
-      const errorMsg = await respBackup.text();
-      console.error('❌ Falha ao criar o backup diário no Supabase:', respBackup.status, errorMsg);
+    if(!respHist.ok){
+      const errorMsg = await respHist.text();
+      console.error('❌ Falha ao gravar no histórico permanente:', respHist.status, errorMsg);
     }
     if(respMain.ok){
-      console.log(`☁️ Sincronizado e backup diário atualizado (${dataHoje}).`);
+      console.log(`☁️ Sincronizado e histórico gravado: ${historyId}`);
     }
   }catch(e){ console.error('❌ Erro crítico ao guardar na nuvem:', e); }
   finally{ isSyncing = false; }
@@ -782,10 +782,9 @@ async function loadDB(){
       // Mantém a cópia local atualizada com o que veio da nuvem, para que um futuro
       // Caso 2 (nuvem indisponível) tenha sempre a versão mais recente possível.
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch(e){}
-      // Uma vez por sessão (não a cada gravação), remove backups diários com mais de
-      // 30 dias — mantém um mês de histórico recuperável sem crescer indefinidamente
-      // e sem arriscar esgotar o espaço do plano gratuito do Supabase.
-      limparBackupsAntigos(30);
+      // Nota: a limpeza automática de backups antigos (limparBackupsAntigos) já não
+      // é chamada aqui — o histórico passou a ser permanente por pedido explícito
+      // (cada gravação cria uma linha "hist_..." que nunca é apagada).
     } else if(rawLocal){
       // Caso 2: a nuvem falhou ou não devolveu dados válidos, mas há cópia local — usa-se essa.
       // Gravação na nuvem fica desativada nesta sessão, para não sobrepor dados bons
@@ -819,11 +818,12 @@ async function loadDB(){
 // precisar de recarregar a página inteira. Também é a forma de reativar a
 // gravação na nuvem depois desta ter ficado desligada por uma falha anterior
 // (Caso 2 do loadDB), ou de resolver um conflito detetado em saveToSupabase().
-// Remove da nuvem os backups diários mais antigos que "diasParaManter", para o
-// histórico não crescer para sempre no plano gratuito do Supabase. Corre em
-// segundo plano (não bloqueia nada) e falha em silêncio se a tabela ainda não
-// tiver a política RLS de DELETE configurada para o role anon — nesse caso os
-// backups antigos simplesmente ficam por apagar até essa política ser criada.
+// Remove da nuvem os backups diários mais antigos que "diasParaManter". NÃO É
+// CHAMADA ATUALMENTE em lado nenhum — o histórico passou a ser permanente por
+// pedido explícito. Fica aqui disponível caso um dia se queira voltar a limitar
+// a retenção (bastaria chamar limparBackupsAntigos(30) de novo, por exemplo em
+// loadDB()); hoje em dia esta função nem encontraria nada para apagar, porque os
+// registos de histórico usam o prefixo "hist_" e não "yolandia_backup_".
 async function limparBackupsAntigos(diasParaManter){
   if(!cloudAvailable) return;
   try{
