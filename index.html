@@ -711,7 +711,14 @@ async function saveToSupabase(){
       });
       if(checkResp.ok){
         const checkData = await checkResp.json();
-        if(Array.isArray(checkData) && checkData.length > 0 && lastCloudTimestamp && checkData[0].updated_at !== lastCloudTimestamp){
+        // CORREÇÃO: comparar como INSTANTE DE TEMPO (milissegundos), não como texto.
+        // O Supabase pode devolver o mesmo instante formatado de forma ligeiramente
+        // diferente do que foi enviado (ex: sufixo "Z" vs "+00:00"), o que fazia esta
+        // verificação achar que havia conflito mesmo contra a própria gravação
+        // anterior deste dispositivo — um falso positivo, não um conflito real.
+        const cloudTime = checkData[0] ? new Date(checkData[0].updated_at).getTime() : NaN;
+        const knownTime = lastCloudTimestamp ? new Date(lastCloudTimestamp).getTime() : NaN;
+        if(Array.isArray(checkData) && checkData.length > 0 && !isNaN(cloudTime) && !isNaN(knownTime) && cloudTime !== knownTime){
           isSyncing = false;
           toast('⚠️ Conflito: outro dispositivo guardou dados novos. Sincronize antes de continuar.', 'err');
           openModal('🛑 Bloqueio de Segurança', `
